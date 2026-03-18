@@ -1,0 +1,9 @@
+/* Estilos específicos de la aplicación si se requieren,
+   aunque la mayoría se manejarán con Tailwind CSS. */
+
+#root {
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
