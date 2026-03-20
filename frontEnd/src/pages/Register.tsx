@@ -43,7 +43,7 @@ export default function Register() {
 
     try {
       // 1. Enviamos todos los datos al Backend
-      const response = await fetch("http://localhost:8000/api/register", {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE}/api/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

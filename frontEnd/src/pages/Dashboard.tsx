@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { UserButton, useUser, useClerk } from "@clerk/react";
 import DashboardHome from "../components/dashboard/DashboardHome";
 import CalendarioView from "../components/dashboard/CalendarioView";
 import ClientesView from "../components/dashboard/ClientesView";
 import AnaliticaView from "../components/dashboard/AnaliticaView";
 import ConfiguracionView from "../components/dashboard/ConfiguracionView";
+import ServiciosView from "../components/dashboard/ServiciosView";
 import { useNegocio } from "../hooks/useNegocio";
+import { useApi } from "../hooks/useApi";
 
 type Section =
   | "dashboard"
   | "calendario"
   | "clientes"
+  | "servicios"
   | "analitica"
   | "configuracion";
 
@@ -49,6 +52,17 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
+    id: "servicios",
+    label: "Servicios",
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"
+      />
+    ),
+  },
+  {
     id: "analitica",
     label: "Analítica",
     icon: (
@@ -76,7 +90,15 @@ export default function Dashboard() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [active, setActive] = useState<Section>("dashboard");
-  const { dashboardData, isLoadingDashboard, updateNegocio } = useNegocio();
+  const { dashboardData, isLoadingDashboard, updateNegocio, negocioId, refetchDashboard } = useNegocio();
+  const { updateHorarios } = useApi(negocioId);
+
+  const handleNavigate = useCallback(
+    (section: "servicios" | "configuracion" | "calendario") => {
+      setActive(section);
+    },
+    [],
+  );
 
   return (
     <div className="min-h-screen bg-[#f4f7f6] font-sans flex text-slate-900">
@@ -277,19 +299,30 @@ export default function Dashboard() {
           {active === "dashboard" && (
             <DashboardHome
               negocioNombre={dashboardData?.negocio.nombre ?? null}
+              negocioSlug={dashboardData?.negocio.slug ?? null}
               totalCitas={dashboardData?.total_citas ?? 0}
               totalClientes={dashboardData?.total_clientes ?? 0}
+              totalServicios={dashboardData?.servicios?.length ?? 0}
+              tieneHorarios={(dashboardData?.horarios ?? []).some(
+                (h) => !h.esta_cerrado,
+              )}
               isLoading={isLoadingDashboard}
+              onNavigate={handleNavigate}
             />
           )}
           {active === "calendario" && <CalendarioView />}
           {active === "clientes" && <ClientesView />}
+          {active === "servicios" && <ServiciosView onDataChanged={refetchDashboard} />}
           {active === "analitica" && <AnaliticaView />}
           {active === "configuracion" && (
             <ConfiguracionView
               negocio={dashboardData?.negocio ?? null}
+              negocioId={negocioId}
+              horarios={dashboardData?.horarios ?? []}
               isLoading={isLoadingDashboard}
               onSave={updateNegocio}
+              onSaveHorarios={updateHorarios}
+              onDataChanged={refetchDashboard}
             />
           )}
         </div>

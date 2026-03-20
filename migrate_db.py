@@ -35,6 +35,20 @@ def run():
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
             print(f"  ➕ {table}.{column} ({col_type}) agregada.")
 
+    # Nueva tabla: bloqueos_tiempo
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bloqueos_tiempo (
+            id TEXT PRIMARY KEY,
+            negocio_id TEXT NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+            empleado_id TEXT REFERENCES empleados(id) ON DELETE CASCADE,
+            hora_inicio DATETIME NOT NULL,
+            hora_fin DATETIME NOT NULL,
+            motivo TEXT,
+            notas TEXT
+        )
+    """)
+    print("  ✅ Tabla bloqueos_tiempo verificada.")
+
     conn.commit()
     conn.close()
     print("✔  Migración completada.")

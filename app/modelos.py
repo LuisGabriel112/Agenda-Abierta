@@ -233,3 +233,30 @@ class Cita(Base):
     cliente: Mapped["Cliente"] = relationship(back_populates="citas")
     empleado: Mapped["Empleado"] = relationship(back_populates="citas")
     servicio: Mapped["Servicio"] = relationship(back_populates="citas")
+
+
+class BloqueoTiempo(Base):
+    __tablename__ = "bloqueos_tiempo"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    negocio_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("negocios.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    empleado_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("empleados.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    hora_inicio: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False
+    )
+    hora_fin: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    motivo: Mapped[Optional[str]] = mapped_column(String(100))
+    notas: Mapped[Optional[str]] = mapped_column(String(500))
+
+    # Relaciones
+    negocio: Mapped["Negocio"] = relationship()

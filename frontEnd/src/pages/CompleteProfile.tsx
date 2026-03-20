@@ -16,7 +16,7 @@ const GIROS = [
   { id: "otro", label: "Otro", emoji: "📋" },
 ];
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 export default function CompleteProfile() {
   const navigate = useNavigate();

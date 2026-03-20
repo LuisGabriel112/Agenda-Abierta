@@ -2,9 +2,13 @@ import { useState } from "react";
 
 interface DashboardHomeProps {
   negocioNombre: string | null;
+  negocioSlug: string | null;
   totalCitas: number;
   totalClientes: number;
+  totalServicios: number;
+  tieneHorarios: boolean;
   isLoading: boolean;
+  onNavigate: (section: "servicios" | "configuracion" | "calendario") => void;
 }
 
 interface CitaForm {
@@ -18,11 +22,16 @@ interface CitaForm {
 
 export default function DashboardHome({
   negocioNombre,
+  negocioSlug,
   totalCitas,
   totalClientes,
+  totalServicios,
+  tieneHorarios,
   isLoading,
+  onNavigate,
 }: DashboardHomeProps) {
   const [showModal, setShowModal] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState<CitaForm>({
     cliente: "",
     telefono: "",
@@ -72,6 +81,88 @@ export default function DashboardHome({
   }
 
   const hasActivity = totalCitas > 0 || totalClientes > 0;
+
+  const publicUrl = negocioSlug
+    ? `${window.location.origin}/b/${negocioSlug}`
+    : null;
+
+  const handleCopyLink = async () => {
+    if (!publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // fallback for browsers without clipboard API
+      const el = document.createElement("textarea");
+      el.value = publicUrl;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const serviciosOk = totalServicios > 0;
+  const horariosOk = tieneHorarios;
+  const enlaceOk = serviciosOk && horariosOk;
+
+  const tutorialSteps = [
+    {
+      key: "servicios",
+      icon: (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+        />
+      ),
+      title: "Configura tus servicios",
+      desc: serviciosOk
+        ? `${totalServicios} servicio${totalServicios !== 1 ? "s" : ""} configurado${totalServicios !== 1 ? "s" : ""} ✓`
+        : "Añade los tratamientos o servicios que ofreces a tus clientes.",
+      done: serviciosOk,
+      cta: serviciosOk ? "Ver servicios" : "Agregar servicios",
+      onClick: () => onNavigate("servicios"),
+    },
+    {
+      key: "horarios",
+      icon: (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      ),
+      title: "Define tus horarios",
+      desc: horariosOk
+        ? "Horarios de atención configurados ✓"
+        : "Establece tu jornada laboral y tiempos de descanso.",
+      done: horariosOk,
+      cta: horariosOk ? "Ver configuración" : "Definir horarios",
+      onClick: () => onNavigate("configuracion"),
+    },
+    {
+      key: "enlace",
+      icon: (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+        />
+      ),
+      title: "Comparte tu enlace",
+      desc: enlaceOk
+        ? "Tu página pública está lista para recibir reservas."
+        : "Primero configura servicios y horarios para activar tu enlace.",
+      done: enlaceOk,
+      cta: copied ? "¡Enlace copiado! ✓" : "Copiar enlace",
+      onClick: enlaceOk ? handleCopyLink : undefined,
+      disabled: !enlaceOk,
+    },
+  ];
 
   return (
     <>
@@ -188,84 +279,189 @@ export default function DashboardHome({
         <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0">
           {/* Tutorial Rápido */}
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-            <h3 className="font-bold text-gray-900 text-lg mb-6">
-              Tutorial Rápido
-            </h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-gray-900 text-lg">
+                Tutorial Rápido
+              </h3>
+              <span className="text-xs text-gray-400 font-medium">
+                {[serviciosOk, horariosOk, enlaceOk].filter(Boolean).length}/3
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full bg-gray-100 rounded-full h-1.5 mb-6">
+              <div
+                className="bg-green-600 h-1.5 rounded-full transition-all duration-500"
+                style={{
+                  width: `${([serviciosOk, horariosOk, enlaceOk].filter(Boolean).length / 3) * 100}%`,
+                }}
+              />
+            </div>
+
             <div className="relative">
               <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-gray-100"></div>
-              <div className="space-y-8 relative">
-                {[
-                  {
-                    icon: (
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                      />
-                    ),
-                    title: "Configura tus servicios",
-                    desc: "Añade los tratamientos o servicios que ofreces a tus clientes.",
-                    active: true,
-                  },
-                  {
-                    icon: (
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    ),
-                    title: "Define tus horarios",
-                    desc: "Establece tu jornada laboral y tiempos de descanso.",
-                    active: true,
-                  },
-                  {
-                    icon: (
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                      />
-                    ),
-                    title: "Comparte tu enlace",
-                    desc: "Envía el link personalizado a tus clientes para auto-reserva.",
-                    active: false,
-                  },
-                ].map((step) => (
-                  <div key={step.title} className="flex gap-4 relative">
+              <div className="space-y-4 relative">
+                {tutorialSteps.map((step) => (
+                  <div key={step.key} className="flex gap-4 relative group">
+                    {/* Icon circle */}
                     <div
-                      className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 z-10 ${
-                        step.active
-                          ? "bg-green-600 text-white shadow-sm"
-                          : "bg-gray-100 text-gray-400 border border-gray-200"
+                      className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
+                        step.done
+                          ? "bg-green-600 text-white shadow-sm shadow-green-600/20"
+                          : step.disabled
+                            ? "bg-gray-100 text-gray-300 border border-gray-200"
+                            : "bg-gray-100 text-gray-400 border border-gray-200"
                       }`}
                     >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        {step.icon}
-                      </svg>
+                      {step.done ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          {step.icon}
+                        </svg>
+                      )}
                     </div>
-                    <div className="pt-2">
-                      <h4
-                        className={`text-sm font-bold ${step.active ? "text-gray-900" : "text-gray-500"}`}
-                      >
-                        {step.title}
-                      </h4>
+
+                    {/* Content */}
+                    <div className="flex-1 pt-1.5 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h4
+                          className={`text-sm font-bold ${
+                            step.done
+                              ? "text-green-700"
+                              : step.disabled
+                                ? "text-gray-400"
+                                : "text-gray-900"
+                          }`}
+                        >
+                          {step.title}
+                        </h4>
+                      </div>
                       <p
-                        className={`text-xs mt-1 leading-relaxed ${step.active ? "text-gray-500" : "text-gray-400"}`}
+                        className={`text-xs mt-0.5 leading-relaxed ${
+                          step.done
+                            ? "text-green-600"
+                            : step.disabled
+                              ? "text-gray-300"
+                              : "text-gray-500"
+                        }`}
                       >
                         {step.desc}
                       </p>
+
+                      {/* CTA button */}
+                      <button
+                        onClick={step.onClick}
+                        disabled={step.disabled && !step.done}
+                        className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                          step.disabled && !step.done
+                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                            : step.done && step.key === "enlace" && copied
+                              ? "bg-green-600 text-white"
+                              : step.done
+                                ? "bg-green-50 text-green-700 hover:bg-green-100"
+                                : "bg-green-600 text-white hover:bg-green-700 shadow-sm shadow-green-600/20"
+                        }`}
+                      >
+                        {step.key === "enlace" && !step.disabled && (
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            {copied ? (
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M5 13l4 4L19 7"
+                              />
+                            ) : (
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                              />
+                            )}
+                          </svg>
+                        )}
+                        {step.key !== "enlace" && !step.disabled && (
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        )}
+                        {step.cta}
+                      </button>
+
+                      {/* Public URL preview for enlace step */}
+                      {step.key === "enlace" && enlaceOk && publicUrl && (
+                        <p className="mt-1.5 text-[10px] text-gray-400 font-mono truncate max-w-[180px]">
+                          {publicUrl}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* All done banner */}
+            {serviciosOk && horariosOk && enlaceOk && (
+              <div className="mt-5 bg-green-50 border border-green-100 rounded-2xl p-3 flex items-center gap-2.5">
+                <div className="w-7 h-7 bg-green-600 rounded-full flex items-center justify-center shrink-0">
+                  <svg
+                    className="w-4 h-4 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={3}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-green-800">
+                    ¡Todo listo! 🎉
+                  </p>
+                  <p className="text-[10px] text-green-700 leading-tight mt-0.5">
+                    Tu agenda ya puede recibir clientes en línea.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tip del Día */}

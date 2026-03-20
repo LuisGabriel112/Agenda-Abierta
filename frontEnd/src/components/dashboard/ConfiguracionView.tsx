@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
-import type { NegocioData } from "../../hooks/useNegocio";
+import { useState, useEffect, useRef } from "react";
+import type { NegocioData, HorarioData } from "../../hooks/useNegocio";
 
 interface ConfiguracionViewProps {
   negocio: NegocioData | null;
+  negocioId: string | null;
+  horarios: HorarioData[];
   isLoading: boolean;
   onSave: (
     fields: Partial<
@@ -12,6 +14,8 @@ interface ConfiguracionViewProps {
       >
     >,
   ) => Promise<boolean>;
+  onSaveHorarios: (horarios: HorarioData[]) => Promise<unknown>;
+  onDataChanged?: () => void;
 }
 
 interface Miembro {
@@ -21,20 +25,38 @@ interface Miembro {
   estado: "Activo" | "Inactivo";
 }
 
-const MIEMBROS_INICIALES: Miembro[] = [
-  {
-    nombre: "Ana Martínez",
-    email: "ana@vitalia.com",
-    rol: "Administrador",
-    estado: "Activo",
-  },
-  {
-    nombre: "Carlos Ruiz",
-    email: "carlos@vitalia.com",
-    rol: "Especialista",
-    estado: "Activo",
-  },
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+const DIAS_SEMANA = [
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+  "Domingo",
 ];
+
+function buildHorarioState(horarios: HorarioData[]): HorarioData[] {
+  return DIAS_SEMANA.map((_, idx) => {
+    const h = horarios.find((h) => h.dia_semana === idx);
+    return (
+      h ?? {
+        dia_semana: idx,
+        hora_apertura: null,
+        hora_cierre: null,
+        esta_cerrado: true,
+      }
+    );
+  });
+}
 
 function Toggle({
   checked,
@@ -84,22 +106,42 @@ function Avatar({ nombre }: { nombre: string }) {
 
 export default function ConfiguracionView({
   negocio,
+  negocioId,
+  horarios,
   isLoading,
   onSave,
+  onSaveHorarios,
+  onDataChanged,
 }: ConfiguracionViewProps) {
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [direccion, setDireccion] = useState("");
   const [biografia, setBiografia] = useState("");
+  const [giro, setGiro] = useState("");
+  const [colorMarca, setColorMarca] = useState("#16a34a");
   const [emailNotif, setEmailNotif] = useState(true);
   const [whatsappNotif, setWhatsappNotif] = useState(false);
   const [cancelacion, setCancelacion] = useState("24 horas antes");
   const [terminosReembolso, setTerminosReembolso] = useState("");
-  const [miembros, setMiembros] = useState<Miembro[]>(MIEMBROS_INICIALES);
+  const [miembros, setMiembros] = useState<Miembro[]>([]);
   const [showInvitar, setShowInvitar] = useState(false);
   const [invitarEmail, setInvitarEmail] = useState("");
   const [invitarRol, setInvitarRol] = useState("Especialista");
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  // Logo upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState("");
+
+  // Horarios state
+  const [horariosState, setHorariosState] = useState<HorarioData[]>(() =>
+    buildHorarioState(horarios),
+  );
+  const [savingHorarios, setSavingHorarios] = useState(false);
+  const [horariosSaved, setHorariosSaved] = useState(false);
+  const [horariosError, setHorariosError] = useState("");
 
   // Sync form with real data when it arrives from the backend
   useEffect(() => {
@@ -107,8 +149,66 @@ export default function ConfiguracionView({
       setNombreNegocio(negocio.nombre ?? "");
       setDireccion(negocio.direccion ?? "");
       setBiografia(negocio.descripcion ?? "");
+      setGiro(negocio.giro ?? "");
+      setColorMarca(negocio.color_marca ?? "#16a34a");
+      const raw = negocio.url_logo ?? null;
+      setLogoUrl(raw ? (raw.startsWith("http") ? raw : `${import.meta.env.VITE_API_BASE}${raw}`) : null);
     }
   }, [negocio]);
+
+  useEffect(() => {
+    setHorariosState(buildHorarioState(horarios));
+  }, [horarios]);
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !negocioId) return;
+    setLogoError("");
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/logo`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Error al subir" }));
+        throw new Error(err.detail ?? "Error al subir");
+      }
+      const data = await res.json();
+      setLogoUrl(`${import.meta.env.VITE_API_BASE}${data.url_logo}?t=${Date.now()}`);
+      onDataChanged?.();
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Error al subir el logo");
+    } finally {
+      setUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const updateDia = (idx: number, patch: Partial<HorarioData>) => {
+    setHorariosState((prev) =>
+      prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)),
+    );
+  };
+
+  const handleGuardarHorarios = async () => {
+    setSavingHorarios(true);
+    setHorariosError("");
+    try {
+      await onSaveHorarios(horariosState);
+      setHorariosSaved(true);
+      onDataChanged?.();
+      setTimeout(() => setHorariosSaved(false), 2500);
+    } catch (e) {
+      setHorariosError(
+        e instanceof Error ? e.message : "Error al guardar horarios",
+      );
+    } finally {
+      setSavingHorarios(false);
+    }
+  };
 
   const handleGuardar = async () => {
     setSaveError("");
@@ -116,6 +216,8 @@ export default function ConfiguracionView({
       nombre: nombreNegocio,
       descripcion: biografia,
       direccion: direccion,
+      giro: giro || undefined,
+      color_marca: colorMarca,
     });
     if (ok) {
       setSaved(true);
@@ -145,7 +247,7 @@ export default function ConfiguracionView({
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50">
-      <div className="max-w-3xl mx-auto p-6 lg:p-8 space-y-6 pb-32">
+      <div className="max-w-3xl mx-auto p-6 lg:p-8 space-y-6 pb-10">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
@@ -242,9 +344,9 @@ export default function ConfiguracionView({
                 </label>
                 <div className="flex items-center gap-3">
                   <div className="h-14 w-14 bg-green-700 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden">
-                    {negocio?.url_logo ? (
+                    {logoUrl ? (
                       <img
-                        src={negocio.url_logo}
+                        src={logoUrl}
                         alt="Logo"
                         className="w-full h-full object-cover"
                       />
@@ -264,9 +366,33 @@ export default function ConfiguracionView({
                       </svg>
                     )}
                   </div>
-                  <button className="border border-gray-200 text-gray-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-                    Cambiar Logo
-                  </button>
+                  <div className="flex flex-col gap-1.5">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleLogoChange}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingLogo}
+                      className="border border-gray-200 text-gray-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {uploadingLogo ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                          Subiendo...
+                        </>
+                      ) : (
+                        "Cambiar Logo"
+                      )}
+                    </button>
+                    <p className="text-[10px] text-gray-400">JPG, PNG o WebP. Máx 2 MB.</p>
+                    {logoError && (
+                      <p className="text-[10px] text-red-500 font-medium">{logoError}</p>
+                    )}
+                  </div>
                 </div>
               </div>
               <div>
@@ -281,6 +407,241 @@ export default function ConfiguracionView({
                 />
               </div>
             </div>
+          </div>
+
+          {/* Save actions inline */}
+          <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-gray-100">
+            {saved && (
+              <span className="flex items-center gap-1.5 text-sm text-green-600 font-semibold">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                ¡Guardado!
+              </span>
+            )}
+            <button
+              onClick={() => {
+                if (negocio) {
+                  setNombreNegocio(negocio.nombre ?? "");
+                  setDireccion(negocio.direccion ?? "");
+                  setBiografia(negocio.descripcion ?? "");
+                  setGiro(negocio.giro ?? "");
+                  setColorMarca(negocio.color_marca ?? "#16a34a");
+                  setSaveError("");
+                }
+              }}
+              className="border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-xl hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              className="flex items-center gap-2 bg-green-600 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20"
+            >
+              Guardar Cambios
+            </button>
+          </div>
+        </div>
+
+        {/* Página Pública */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="h-8 w-8 bg-green-100 rounded-xl flex items-center justify-center">
+              <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Página Pública</h2>
+          </div>
+
+          {/* Link de la página */}
+          {negocio?.slug && (
+            <div className="mb-5 flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+              <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <span className="text-sm text-gray-500 flex-1 truncate">
+                {window.location.host}/b/<span className="font-semibold text-gray-800">{negocio.slug}</span>
+              </span>
+              <a
+                href={`${window.location.origin}/b/${negocio.slug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold text-green-600 hover:underline shrink-0"
+              >
+                Ver página
+              </a>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Tipo de negocio */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Tipo de negocio
+              </label>
+              <p className="text-xs text-gray-400 mb-2">Aparece como etiqueta en tu página pública.</p>
+              <input
+                value={giro}
+                onChange={(e) => setGiro(e.target.value)}
+                placeholder="Ej. Barbería, Salón de belleza, Spa…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Color de marca */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Color de marca
+              </label>
+              <p className="text-xs text-gray-400 mb-2">Se usa en botones, etiquetas y el hero de tu página.</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={colorMarca}
+                  onChange={(e) => setColorMarca(e.target.value)}
+                  className="w-10 h-10 rounded-xl border border-gray-200 cursor-pointer p-0.5 bg-white"
+                />
+                <div className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: colorMarca }} />
+                  <span className="text-sm text-gray-700 font-mono">{colorMarca}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Preview strip */}
+          <div className="mt-5 rounded-xl overflow-hidden border border-gray-100">
+            <div className="h-2" style={{ backgroundColor: colorMarca }} />
+            <div className="px-4 py-3 flex items-center gap-3" style={{ background: `${colorMarca}10` }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ backgroundColor: colorMarca }}>
+                {negocio ? initials(negocio.nombre) : "N"}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{negocio?.nombre || "Tu negocio"}</p>
+                {giro && <p className="text-xs" style={{ color: colorMarca }}>{giro}</p>}
+              </div>
+              <div className="ml-auto">
+                <div className="text-xs font-bold text-white px-3 py-1.5 rounded-lg" style={{ backgroundColor: colorMarca }}>
+                  Reservar cita
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-gray-400 mt-3">Guarda los cambios para ver los colores actualizados en tu página pública.</p>
+        </div>
+
+        {/* Horarios de Atención */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 bg-green-100 rounded-xl flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-base font-bold text-gray-900">
+                Horarios de Atención
+              </h2>
+            </div>
+            <button
+              onClick={handleGuardarHorarios}
+              disabled={savingHorarios}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                horariosSaved
+                  ? "bg-green-700 text-white"
+                  : "bg-green-600 text-white hover:bg-green-700 shadow-green-600/20"
+              }`}
+            >
+              {horariosSaved ? (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  ¡Guardado!
+                </>
+              ) : savingHorarios ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Guardar Horarios"
+              )}
+            </button>
+          </div>
+
+          {horariosError && (
+            <div className="bg-red-50 border border-red-100 text-red-600 text-sm font-medium px-4 py-3 rounded-xl mb-4">
+              {horariosError}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {horariosState.map((h, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0"
+              >
+                {/* Día */}
+                <span className="text-sm font-semibold text-gray-700 w-24 shrink-0">
+                  {DIAS_SEMANA[idx]}
+                </span>
+
+                {/* Toggle abierto/cerrado */}
+                <Toggle
+                  checked={!h.esta_cerrado}
+                  onChange={() =>
+                    updateDia(idx, {
+                      esta_cerrado: !h.esta_cerrado,
+                      hora_apertura: h.esta_cerrado ? "09:00" : null,
+                      hora_cierre: h.esta_cerrado ? "18:00" : null,
+                    })
+                  }
+                />
+                <span
+                  className={`text-xs font-semibold w-16 shrink-0 ${
+                    h.esta_cerrado ? "text-gray-400" : "text-green-600"
+                  }`}
+                >
+                  {h.esta_cerrado ? "Cerrado" : "Abierto"}
+                </span>
+
+                {/* Horas */}
+                {!h.esta_cerrado && (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="time"
+                      value={h.hora_apertura ?? ""}
+                      onChange={(e) =>
+                        updateDia(idx, { hora_apertura: e.target.value })
+                      }
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                    <span className="text-gray-400 text-sm">—</span>
+                    <input
+                      type="time"
+                      value={h.hora_cierre ?? ""}
+                      onChange={(e) =>
+                        updateDia(idx, { hora_cierre: e.target.value })
+                      }
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -448,8 +809,8 @@ export default function ConfiguracionView({
                     Stripe Connect
                   </span>
                 </div>
-                <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2.5 py-1 rounded-full border border-green-200 uppercase tracking-wide">
-                  Conectado
+                <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full border border-gray-200 uppercase tracking-wide">
+                  No configurado
                 </span>
               </div>
               <p className="text-xs text-gray-500 mb-3 leading-relaxed">
@@ -481,16 +842,11 @@ export default function ConfiguracionView({
                   Cuenta Bancaria
                 </span>
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 px-3 py-2.5 mb-3">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
-                  IBAN Finaliza en
-                </p>
-                <p className="text-sm font-bold text-gray-800 tracking-widest">
-                  **** **** **** 8821
-                </p>
-              </div>
+              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                Agrega tu cuenta bancaria para recibir transferencias de los anticipos cobrados.
+              </p>
               <button className="text-xs text-green-600 font-semibold hover:underline">
-                Actualizar datos bancarios
+                Agregar cuenta bancaria
               </button>
             </div>
           </div>
@@ -605,52 +961,6 @@ export default function ConfiguracionView({
             </table>
           </div>
         </div>
-      </div>
-
-      {/* Footer fijo */}
-      <div className="fixed bottom-0 left-64 right-0 bg-white border-t border-gray-100 px-8 py-4 flex items-center justify-end gap-3 z-40">
-        <button
-          onClick={() => {
-            if (negocio) {
-              setNombreNegocio(negocio.nombre ?? "");
-              setDireccion(negocio.direccion ?? "");
-              setBiografia(negocio.descripcion ?? "");
-              setSaveError("");
-            }
-          }}
-          className="border border-gray-200 text-gray-700 font-semibold px-6 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-sm"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleGuardar}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${
-            saved
-              ? "bg-green-700 text-white"
-              : "bg-green-600 text-white hover:bg-green-700 shadow-green-600/20 shadow-lg"
-          }`}
-        >
-          {saved ? (
-            <>
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              ¡Guardado!
-            </>
-          ) : (
-            "Guardar Cambios"
-          )}
-        </button>
       </div>
 
       {/* Modal Invitar Miembro */}

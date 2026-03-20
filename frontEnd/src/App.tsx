@@ -9,8 +9,9 @@ import Success from "./pages/Success";
 import PaymentFailed from "./pages/PaymentFailed";
 import Dashboard from "./pages/Dashboard";
 import CompleteProfile from "./pages/CompleteProfile";
+import NegocioPublico from "./pages/NegocioPublico";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 type RegStatus = "loading" | "registered" | "not_registered";
 
@@ -88,6 +89,7 @@ function App() {
         <Route path="/success" element={<Success />} />
         <Route path="/payment-failed" element={<PaymentFailed />} />
         <Route path="/complete-profile" element={<CompleteProfile />} />
+        <Route path="/b/:slug" element={<NegocioPublico />} />
         <Route
           path="/dashboard"
           element={
