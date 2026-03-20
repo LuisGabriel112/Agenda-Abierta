@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 
@@ -46,6 +46,7 @@ interface ReservaState {
   clienteNombre: string;
   clienteTelefono: string;
   clienteEmail: string;
+  metodoPago: "en_fisico" | "en_linea";
 }
 
 type Paso = 0 | 1 | 2 | 3 | 4 | "exito" | "error_reserva";
@@ -305,6 +306,8 @@ export default function NegocioPublicoPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [pagoExitoso, setPagoExitoso] = useState(false);
   const [paso, setPaso] = useState<Paso>(0);
   const [reserva, setReserva] = useState<ReservaState>({
     servicioId: "",
@@ -318,6 +321,7 @@ export default function NegocioPublicoPage() {
     clienteNombre: "",
     clienteTelefono: "",
     clienteEmail: "",
+    metodoPago: "en_fisico",
   });
 
   const [slots, setSlots] = useState<string[]>([]);
@@ -334,6 +338,16 @@ export default function NegocioPublicoPage() {
     nombre?: string;
     telefono?: string;
   }>({});
+
+  // ── Detectar regreso desde Stripe ────────────────────────────────────────
+  useEffect(() => {
+    const pago = searchParams.get("pago");
+    if (pago === "exitoso") {
+      setPagoExitoso(true);
+    } else if (pago === "cancelado") {
+      setSearchParams({});
+    }
+  }, [searchParams]);
 
   // ── Load negocio ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -428,12 +442,19 @@ export default function NegocioPublicoPage() {
             cliente_nombre: reserva.clienteNombre.trim(),
             cliente_telefono: reserva.clienteTelefono.trim(),
             cliente_email: reserva.clienteEmail.trim() || undefined,
+            metodo_pago: reserva.metodoPago,
+            success_url: `${window.location.origin}${window.location.pathname}`,
+            cancel_url: `${window.location.origin}${window.location.pathname}`,
           }),
         },
       );
       const data = await res.json();
       if (!res.ok)
         throw new Error(data.detail || "Error al confirmar la cita.");
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
       setCitaConfirmada(data);
       setPaso("exito");
     } catch (e) {
@@ -458,6 +479,7 @@ export default function NegocioPublicoPage() {
       clienteNombre: "",
       clienteTelefono: "",
       clienteEmail: "",
+      metodoPago: "en_fisico",
     });
     setSlots([]);
     setSlotsError("");
@@ -523,6 +545,33 @@ export default function NegocioPublicoPage() {
 
   // ── Wizard panel ──────────────────────────────────────────────────────────
   const wizardOpen = paso !== 0;
+
+  // ── Overlay pago exitoso (regreso desde Stripe) ───────────────────────────
+  if (pagoExitoso) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center">
+          <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-5 animate-bounce">
+            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">¡Pago exitoso!</h1>
+          <p className="text-gray-500 text-sm mb-2">Tu pago fue procesado y tu cita ha sido confirmada.</p>
+          <p className="text-gray-400 text-xs mb-8">Recibirás un correo de confirmación si proporcionaste tu email.</p>
+          <button
+            onClick={() => {
+              setPagoExitoso(false);
+              setSearchParams({});
+            }}
+            className="w-full bg-green-600 text-white font-bold py-3 rounded-2xl hover:bg-green-700 transition-colors"
+          >
+            Volver al negocio
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -1293,6 +1342,49 @@ export default function NegocioPublicoPage() {
                         placeholder="tu@correo.com"
                         className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       />
+                    </div>
+
+                    {/* Método de pago */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-2">
+                        ¿Cómo vas a pagar? <span className="text-red-500">*</span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setReserva((r) => ({ ...r, metodoPago: "en_fisico" }))}
+                          className={`flex flex-col items-center gap-2 border-2 rounded-xl p-4 text-sm font-semibold transition-all ${
+                            reserva.metodoPago === "en_fisico"
+                              ? "border-green-500 bg-green-50 text-green-800"
+                              : "border-gray-200 text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                          </svg>
+                          Pagar en físico
+                          {reserva.metodoPago === "en_fisico" && (
+                            <span className="text-xs font-normal text-green-600">Al llegar</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReserva((r) => ({ ...r, metodoPago: "en_linea" }))}
+                          className={`flex flex-col items-center gap-2 border-2 rounded-xl p-4 text-sm font-semibold transition-all ${
+                            reserva.metodoPago === "en_linea"
+                              ? "border-green-500 bg-green-50 text-green-800"
+                              : "border-gray-200 text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                          </svg>
+                          Pagar en línea
+                          {reserva.metodoPago === "en_linea" && (
+                            <span className="text-xs font-normal text-green-600">Tarjeta / débito</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

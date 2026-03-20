@@ -26,6 +26,8 @@ def run():
         ("negocios", "direccion", "TEXT"),
         # Nueva columna en la tabla empleados (sin UNIQUE, SQLite no lo soporta en ALTER TABLE)
         ("empleados", "clerk_user_id", "TEXT"),
+        # Método de pago elegido al reservar
+        ("citas", "metodo_pago", "TEXT"),
     ]
 
     for table, column, col_type in migrations:

@@ -599,6 +599,7 @@ export default function CalendarioView() {
   const [nuevaCitaHora, setNuevaCitaHora] = useState("");
   const [savingCita, setSavingCita] = useState(false);
   const [savingError, setSavingError] = useState("");
+  const [paginaProximas, setPaginaProximas] = useState(0);
 
   // Bloqueo state
   const [bloqueoLabel, setBloqueoLabel] = useState({ dia: "", hora: "" });
@@ -725,8 +726,7 @@ export default function CalendarioView() {
 
   const proximas = [...citas]
     .filter((c) => c.estado !== "CANCELADA")
-    .sort((a, b) => new Date(a.hora_inicio).getTime() - new Date(b.hora_inicio).getTime())
-    .slice(0, 3);
+    .sort((a, b) => new Date(a.hora_inicio).getTime() - new Date(b.hora_inicio).getTime());
 
   const citasHoy = citasEnDia(today);
 
@@ -981,38 +981,65 @@ export default function CalendarioView() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {proximas.map((cita) => (
-                  <div
-                    key={cita.id}
-                    className="bg-gray-50 rounded-2xl p-3 border border-gray-100 cursor-pointer hover:border-green-200 transition-colors"
-                    onClick={() => setCitaSeleccionada(cita)}
-                  >
-                    <div className="flex items-start gap-2 mb-2">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-green-700">
-                        {cita.cliente_nombre.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-900 truncate">{cita.cliente_nombre}</p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {cita.servicio_nombre} •{" "}
-                          {new Date(cita.hora_inicio).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${estadoBadgeClass(cita.estado)}`}>
-                        {cita.estado.charAt(0) + cita.estado.slice(1).toLowerCase()}
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleUpdateEstado(cita.id, "CONFIRMADA"); }}
-                      disabled={cita.estado === "CONFIRMADA" || cita.estado === "COMPLETADA"}
-                      className="w-full bg-green-600 text-white text-xs font-bold py-2 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              <>
+                <div className="space-y-3">
+                  {proximas.slice(paginaProximas * 3, paginaProximas * 3 + 3).map((cita) => (
+                    <div
+                      key={cita.id}
+                      className="bg-gray-50 rounded-2xl p-3 border border-gray-100 cursor-pointer hover:border-green-200 transition-colors"
+                      onClick={() => setCitaSeleccionada(cita)}
                     >
-                      {cita.estado === "COMPLETADA" ? "Completada ✓" : "Confirmar llegada"}
+                      <div className="flex items-start gap-2 mb-2">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-green-700">
+                          {cita.cliente_nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate">{cita.cliente_nombre}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {cita.servicio_nombre} •{" "}
+                            {new Date(cita.hora_inicio).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${estadoBadgeClass(cita.estado)}`}>
+                          {cita.estado.charAt(0) + cita.estado.slice(1).toLowerCase()}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUpdateEstado(cita.id, "CONFIRMADA"); }}
+                        disabled={cita.estado === "CONFIRMADA" || cita.estado === "COMPLETADA"}
+                        className="w-full bg-green-600 text-white text-xs font-bold py-2 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {cita.estado === "COMPLETADA" ? "Completada ✓" : "Confirmar llegada"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {proximas.length > 3 && (
+                  <div className="flex items-center justify-between mt-3">
+                    <button
+                      onClick={() => setPaginaProximas((p) => Math.max(0, p - 1))}
+                      disabled={paginaProximas === 0}
+                      className="h-7 w-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-gray-400">
+                      {paginaProximas + 1} / {Math.ceil(proximas.length / 3)}
+                    </span>
+                    <button
+                      onClick={() => setPaginaProximas((p) => Math.min(Math.ceil(proximas.length / 3) - 1, p + 1))}
+                      disabled={paginaProximas >= Math.ceil(proximas.length / 3) - 1}
+                      className="h-7 w-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
                     </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
 

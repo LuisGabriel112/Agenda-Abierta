@@ -227,6 +227,7 @@ class Cita(Base):
         Enum(EstadoCita, native_enum=True), default=EstadoCita.PENDIENTE, nullable=False
     )
     monto_anticipo: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), default=0)
+    metodo_pago: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "en_linea" | "en_fisico"
 
     # Relaciones
     negocio: Mapped["Negocio"] = relationship(back_populates="citas")

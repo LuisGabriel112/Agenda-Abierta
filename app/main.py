@@ -4,7 +4,7 @@ import uuid
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -241,6 +241,7 @@ class CitaItem(BaseModel):
     hora_fin: str
     estado: str
     monto_anticipo: str
+    metodo_pago: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +692,7 @@ def _cita_to_item(x: Cita) -> CitaItem:
         hora_fin=x.hora_fin.isoformat(),
         estado=x.estado.value,
         monto_anticipo=f"${x.monto_anticipo or 0:,.2f}",
+        metodo_pago=x.metodo_pago,
     )
 
 
@@ -1027,12 +1029,16 @@ class ReservaRequest(BaseModel):
     cliente_nombre: str
     cliente_telefono: str
     cliente_email: Optional[str] = None
+    metodo_pago: Optional[str] = "en_fisico"  # "en_linea" | "en_fisico"
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
 
 
 class ReservaResponse(BaseModel):
     success: bool
     cita_id: str
     mensaje: str
+    checkout_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1377,15 +1383,47 @@ async def reservar_cita_publica(
         hora_inicio=hora_inicio,
         hora_fin=hora_fin,
         estado=EstadoCita.PENDIENTE,
+        metodo_pago=body.metodo_pago or "en_fisico",
     )
     db.add(nueva_cita)
     db.commit()
     db.refresh(nueva_cita)
 
+    # Pago en línea — crear Stripe Checkout Session
+    checkout_url = None
+    if body.metodo_pago == "en_linea" and body.success_url and body.cancel_url:
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": "mxn",
+                            "product_data": {"name": servicio.nombre},
+                            "unit_amount": int(servicio.precio * 100),
+                        },
+                        "quantity": 1,
+                    }
+                ],
+                mode="payment",
+                success_url=f"{body.success_url}?pago=exitoso&cita_id={nueva_cita.id}",
+                cancel_url=f"{body.cancel_url}?pago=cancelado&cita_id={nueva_cita.id}",
+                metadata={"cita_id": str(nueva_cita.id)},
+                customer_email=body.cliente_email or None,
+            )
+            checkout_url = session.url
+        except Exception as e:
+            # Si Stripe falla, la cita queda guardada pero avisamos
+            raise HTTPException(
+                status_code=502,
+                detail=f"Cita guardada pero no se pudo crear el pago: {str(e)}",
+            )
+
     return ReservaResponse(
         success=True,
         cita_id=str(nueva_cita.id),
         mensaje="Cita agendada exitosamente",
+        checkout_url=checkout_url,
     )
 
 
