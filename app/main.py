@@ -1,17 +1,26 @@
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
+# ── Cargar .env ANTES de cualquier import que lea variables de entorno ──────
 from dotenv import load_dotenv
+_env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+load_dotenv(dotenv_path=_env_path, override=True)
+print(f"[env] _env_path={_env_path}, SUPABASE_SERVICE_KEY={'SET' if os.getenv('SUPABASE_SERVICE_KEY') else 'EMPTY'}")
 
-load_dotenv(override=True)
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from .notificaciones import enviar_recordatorio, notificar_reserva
+
+_notif_executor = ThreadPoolExecutor(max_workers=4)
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import stripe
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,15 +40,122 @@ from .modelos import (
 )
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PLATFORM_FEE_PCT = float(os.getenv("STRIPE_PLATFORM_FEE_PCT", "0"))
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Static files — logos
+
+# ---------------------------------------------------------------------------
+# Scheduler de recordatorios — corre cada hora
+# ---------------------------------------------------------------------------
+
+def _job_recordatorios():
+    """Revisa citas en las próximas 24-25h y manda recordatorio si aún no se envió."""
+    from datetime import timezone as _tz
+    from .database import SessionLocal as _Session
+
+    ahora = datetime.now(_tz.utc)
+    ventana_inicio = ahora + timedelta(hours=24)
+    ventana_fin = ahora + timedelta(hours=25)
+
+    db = _Session()
+    try:
+        citas = (
+            db.query(Cita)
+            .join(Cita.cliente)
+            .join(Cita.negocio)
+            .join(Cita.servicio)
+            .join(Cita.empleado)
+            .filter(
+                Cita.hora_inicio >= ventana_inicio,
+                Cita.hora_inicio < ventana_fin,
+                Cita.estado != EstadoCita.CANCELADA,
+                Cita.recordatorio_enviado == False,  # noqa: E712
+            )
+            .all()
+        )
+        for cita in citas:
+            if not cita.cliente.email:
+                continue
+            if not cita.negocio.notif_email:
+                continue
+            enviado = enviar_recordatorio(
+                cliente_nombre=cita.cliente.nombre,
+                cliente_email=cita.cliente.email,
+                negocio_nombre=cita.negocio.nombre,
+                negocio_direccion=cita.negocio.direccion,
+                servicio_nombre=cita.servicio.nombre,
+                empleado_nombre=cita.empleado.nombre,
+                hora_inicio=cita.hora_inicio,
+            )
+            if enviado:
+                cita.recordatorio_enviado = True
+        db.commit()
+    except Exception as e:
+        print(f"[recordatorios] error: {e}")
+    finally:
+        db.close()
+
+
+_scheduler = BackgroundScheduler()
+_scheduler.add_job(_job_recordatorios, "interval", hours=5, id="recordatorios")
+
+
+@app.on_event("startup")
+def startup_scheduler():
+    _scheduler.start()
+    print("[scheduler] Recordatorios activos — revisión cada hora.")
+
+
+@app.on_event("shutdown")
+def shutdown_scheduler():
+    _scheduler.shutdown(wait=False)
+
+
+# Static files — logos (fallback local cuando Supabase Storage no está configurado)
 LOGOS_DIR = Path(__file__).parent.parent / "static" / "logos"
 LOGOS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(LOGOS_DIR.parent)), name="static")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+_LOGOS_BUCKET = "logos"
+
+
+def _supabase_upload(filename: str, contents: bytes, content_type: str) -> str | None:
+    """Sube un archivo al bucket 'logos' de Supabase Storage. Retorna la URL pública o None."""
+    _url = os.environ.get("SUPABASE_URL", "")
+    _key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not _url or not _key:
+        print(f"[supabase-storage] Skipping — SUPABASE_URL={'SET' if _url else 'EMPTY'}, KEY={'SET' if _key else 'EMPTY'}")
+        return None
+    import requests as _req
+    upload_url = f"{_url}/storage/v1/object/{_LOGOS_BUCKET}/{filename}"
+    headers = {
+        "Authorization": f"Bearer {_key}",
+        "Content-Type": content_type,
+        "x-upsert": "true",
+    }
+    res = _req.put(upload_url, headers=headers, data=contents, timeout=15)
+    if res.status_code in (200, 201):
+        return f"{_url}/storage/v1/object/public/{_LOGOS_BUCKET}/{filename}"
+    print(f"[supabase-storage] Error {res.status_code}: {res.text}")
+    return None
+
+
+def _supabase_delete(filename: str) -> None:
+    """Elimina un archivo del bucket 'logos' de Supabase Storage."""
+    _url = os.environ.get("SUPABASE_URL", "")
+    _key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not _url or not _key:
+        return
+    import requests as _req
+    url = f"{_url}/storage/v1/object/{_LOGOS_BUCKET}"
+    headers = {"Authorization": f"Bearer {_key}"}
+    _req.delete(url, headers=headers, json={"prefixes": [filename]}, timeout=10)
 
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
@@ -47,6 +163,7 @@ _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,6 +191,15 @@ class ServiceItem(BaseModel):
     price: str
 
 
+class CreateSubscriptionRequest(BaseModel):
+    paymentMethodId: str
+    plan: str
+    isAnnual: bool
+    amountCents: int
+    email: Optional[str] = None
+    businessName: Optional[str] = None
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: str
@@ -87,6 +213,8 @@ class RegisterRequest(BaseModel):
     services: List[ServiceItem] = []
     schedule: Dict[str, ScheduleDay] = {}
     clerkUserId: Optional[str] = None
+    stripeCustomerId: Optional[str] = None
+    stripeSubscriptionId: Optional[str] = None
 
 
 class RegisterResponse(BaseModel):
@@ -107,6 +235,13 @@ class NegocioUpdateRequest(BaseModel):
     descripcion: Optional[str] = None
     direccion: Optional[str] = None
     color_marca: Optional[str] = None
+    email_negocio: Optional[str] = None
+    telefono_negocio: Optional[str] = None
+    notif_email: Optional[bool] = None
+    notif_whatsapp: Optional[bool] = None
+    clabe: Optional[str] = None
+    banco: Optional[str] = None
+    titular_cuenta: Optional[str] = None
 
 
 class NegocioResponse(BaseModel):
@@ -119,6 +254,14 @@ class NegocioResponse(BaseModel):
     color_marca: Optional[str]
     url_logo: Optional[str]
     fecha_creacion: str
+    email_negocio: Optional[str] = None
+    telefono_negocio: Optional[str] = None
+    notif_email: bool = True
+    notif_whatsapp: bool = False
+    clabe: Optional[str] = None
+    banco: Optional[str] = None
+    titular_cuenta: Optional[str] = None
+    stripe_connect_id: Optional[str] = None
 
 
 class ServicioSchema(BaseModel):
@@ -242,6 +385,7 @@ class CitaItem(BaseModel):
     estado: str
     monto_anticipo: str
     metodo_pago: Optional[str] = None
+    pagado: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +420,7 @@ class AnaliticaResponse(BaseModel):
 
 def send_welcome_email(email: str, name: str, plan: str):
     print(f"==================================================")
-    print(f"📧 ENVIANDO CORREO A: {email}")
+    print(f"ENVIANDO CORREO A: {email}")
     print(f"Asunto: ¡Bienvenido a AgendaAbierta, {name}!")
     print(f"Mensaje: Plan {plan.capitalize()} activado.")
     print(f"==================================================")
@@ -365,6 +509,14 @@ async def get_negocio(negocio_id: str, db: Session = Depends(get_db)):
             color_marca=negocio.color_marca,
             url_logo=negocio.url_logo,
             fecha_creacion=negocio.fecha_creacion.isoformat(),
+            email_negocio=negocio.email_negocio,
+            telefono_negocio=negocio.telefono_negocio,
+            notif_email=negocio.notif_email if negocio.notif_email is not None else True,
+            notif_whatsapp=negocio.notif_whatsapp if negocio.notif_whatsapp is not None else False,
+            clabe=negocio.clabe,
+            banco=negocio.banco,
+            titular_cuenta=negocio.titular_cuenta,
+            stripe_connect_id=negocio.stripe_connect_id,
         ),
         servicios=[
             ServicioSchema(
@@ -408,6 +560,43 @@ async def update_negocio(
     return {"success": True, "message": "Negocio actualizado."}
 
 
+@app.delete("/api/negocio/{negocio_id}", status_code=204)
+async def delete_negocio(negocio_id: str, db: Session = Depends(get_db)):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+
+    # Eliminar en cascada: citas, clientes, servicios, horarios, empleados
+    citas = db.query(Cita).filter(Cita.negocio_id == nid).all()
+    for cita in citas:
+        db.delete(cita)
+
+    clientes = db.query(Cliente).filter(Cliente.negocio_id == nid).all()
+    for cliente in clientes:
+        db.delete(cliente)
+
+    servicios = db.query(Servicio).filter(Servicio.negocio_id == nid).all()
+    for servicio in servicios:
+        db.delete(servicio)
+
+    horarios = db.query(HorarioTrabajo).filter(HorarioTrabajo.negocio_id == nid).all()
+    for horario in horarios:
+        db.delete(horario)
+
+    empleados = db.query(Empleado).filter(Empleado.negocio_id == nid).all()
+    for empleado in empleados:
+        db.delete(empleado)
+
+    from .modelos import BloqueoTiempo
+    bloqueos = db.query(BloqueoTiempo).filter(BloqueoTiempo.negocio_id == nid).all()
+    for bloqueo in bloqueos:
+        db.delete(bloqueo)
+
+    db.delete(negocio)
+    db.commit()
+
+
 @app.post("/api/negocio/{negocio_id}/logo")
 async def upload_logo(
     negocio_id: str,
@@ -428,25 +617,158 @@ async def upload_logo(
     if len(contents) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="La imagen no debe superar 2 MB.")
 
-    # Delete old logo file if it exists
-    if negocio.url_logo:
-        old_filename = negocio.url_logo.split("/static/logos/")[-1]
-        old_path = LOGOS_DIR / old_filename
-        if old_path.exists():
-            old_path.unlink()
-
-    # Save new file
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     filename = f"{nid}.{ext}"
-    save_path = LOGOS_DIR / filename
-    with open(save_path, "wb") as f:
-        f.write(contents)
 
-    url_logo = f"/static/logos/{filename}"
+    # Intentar Supabase Storage primero
+    public_url = _supabase_upload(filename, contents, file.content_type or "image/jpeg")
+
+    if public_url:
+        # Eliminar logo anterior de Supabase si era local (migración)
+        if negocio.url_logo and "/static/logos/" in negocio.url_logo:
+            old_local = LOGOS_DIR / negocio.url_logo.split("/static/logos/")[-1]
+            if old_local.exists():
+                old_local.unlink()
+        url_logo = public_url
+    else:
+        # Fallback: guardar en filesystem local
+        if negocio.url_logo and "/static/logos/" in negocio.url_logo:
+            old_path = LOGOS_DIR / negocio.url_logo.split("/static/logos/")[-1]
+            if old_path.exists():
+                old_path.unlink()
+        save_path = LOGOS_DIR / filename
+        with open(save_path, "wb") as f:
+            f.write(contents)
+        url_logo = f"/static/logos/{filename}"
+
     negocio.url_logo = url_logo
     db.commit()
 
     return {"url_logo": url_logo}
+
+
+# ---------------------------------------------------------------------------
+# Schemas — Empleados
+# ---------------------------------------------------------------------------
+
+
+class EmpleadoCreateRequest(BaseModel):
+    nombre: str
+    email: str
+    rol: str = "STAFF"  # "ADMIN" | "STAFF"
+
+
+class EmpleadoUpdateRequest(BaseModel):
+    nombre: Optional[str] = None
+    email: Optional[str] = None
+    rol: Optional[str] = None
+    activo: Optional[bool] = None
+
+
+class EmpleadoItem(BaseModel):
+    id: str
+    nombre: str
+    email: str
+    rol: str
+    activo: bool
+
+
+# ---------------------------------------------------------------------------
+# Rutas — Empleados
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/negocio/{negocio_id}/empleados", response_model=List[EmpleadoItem])
+async def list_empleados(negocio_id: str, db: Session = Depends(get_db)):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    empleados = db.query(Empleado).filter(Empleado.negocio_id == nid).all()
+    return [
+        EmpleadoItem(
+            id=str(e.id),
+            nombre=e.nombre,
+            email=e.email,
+            rol=e.rol.value,
+            activo=e.activo,
+        )
+        for e in empleados
+    ]
+
+
+@app.post("/api/negocio/{negocio_id}/empleados", response_model=EmpleadoItem)
+async def create_empleado(
+    negocio_id: str, body: EmpleadoCreateRequest, db: Session = Depends(get_db)
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    rol = RolEmpleado.ADMIN if body.rol.upper() == "ADMIN" else RolEmpleado.STAFF
+    emp = Empleado(
+        negocio_id=nid,
+        nombre=body.nombre.strip(),
+        email=body.email.strip().lower(),
+        rol=rol,
+        activo=True,
+    )
+    db.add(emp)
+    db.commit()
+    db.refresh(emp)
+    return EmpleadoItem(
+        id=str(emp.id),
+        nombre=emp.nombre,
+        email=emp.email,
+        rol=emp.rol.value,
+        activo=emp.activo,
+    )
+
+
+@app.patch("/api/negocio/{negocio_id}/empleados/{empleado_id}", response_model=EmpleadoItem)
+async def update_empleado(
+    negocio_id: str,
+    empleado_id: str,
+    body: EmpleadoUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    eid = _parse_uuid(empleado_id, "ID de empleado")
+    emp = (
+        db.query(Empleado)
+        .filter(Empleado.id == eid, Empleado.negocio_id == nid)
+        .first()
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    if body.nombre is not None:
+        emp.nombre = body.nombre.strip()
+    if body.email is not None:
+        emp.email = body.email.strip().lower()
+    if body.rol is not None:
+        emp.rol = RolEmpleado.ADMIN if body.rol.upper() == "ADMIN" else RolEmpleado.STAFF
+    if body.activo is not None:
+        emp.activo = body.activo
+    db.commit()
+    db.refresh(emp)
+    return EmpleadoItem(
+        id=str(emp.id),
+        nombre=emp.nombre,
+        email=emp.email,
+        rol=emp.rol.value,
+        activo=emp.activo,
+    )
+
+
+@app.delete("/api/negocio/{negocio_id}/empleados/{empleado_id}", status_code=204)
+async def delete_empleado(
+    negocio_id: str, empleado_id: str, db: Session = Depends(get_db)
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    eid = _parse_uuid(empleado_id, "ID de empleado")
+    emp = (
+        db.query(Empleado)
+        .filter(Empleado.id == eid, Empleado.negocio_id == nid)
+        .first()
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    db.delete(emp)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +1015,7 @@ def _cita_to_item(x: Cita) -> CitaItem:
         estado=x.estado.value,
         monto_anticipo=f"${x.monto_anticipo or 0:,.2f}",
         metodo_pago=x.metodo_pago,
+        pagado=x.pagado,
     )
 
 
@@ -884,6 +1207,351 @@ async def get_analitica(negocio_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# Ruta — Crear suscripción Stripe
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/create-subscription")
+async def create_subscription(body: CreateSubscriptionRequest):
+    try:
+        # 1. Crear cliente en Stripe
+        customer = stripe.Customer.create(
+            email=body.email or None,
+            description=f"Negocio: {body.businessName or 'Sin nombre'}",
+        )
+
+        # 2. Adjuntar el método de pago al cliente
+        stripe.PaymentMethod.attach(body.paymentMethodId, customer=customer.id)
+
+        # 3. Establecer como método de pago por defecto
+        stripe.Customer.modify(
+            customer.id,
+            invoice_settings={"default_payment_method": body.paymentMethodId},
+        )
+
+        # 4. Crear Price dinámico con recurrencia
+        interval = "year" if body.isAnnual else "month"
+        price = stripe.Price.create(
+            currency="mxn",
+            unit_amount=body.amountCents,
+            recurring={"interval": interval},
+            product_data={
+                "name": f"Plan {body.plan.capitalize()} AgendaAbierta ({'Anual' if body.isAnnual else 'Mensual'})"
+            },
+        )
+
+        # 5. Crear suscripción con pago incompleto hasta confirmar
+        subscription = stripe.Subscription.create(
+            customer=customer.id,
+            items=[{"price": price.id}],
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+            expand=["latest_invoice.payments"],
+        )
+
+        # 6. Obtener client_secret desde invoice.payments (nueva API Stripe basil 2025-03-31)
+        invoice = subscription.latest_invoice
+        payments_data = invoice.payments.data if hasattr(invoice, "payments") else []
+        if not payments_data:
+            raise HTTPException(status_code=502, detail="No se pudo obtener el payment intent de la suscripción.")
+        payment_intent_id = payments_data[0].payment.payment_intent
+        if isinstance(payment_intent_id, str):
+            pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+            client_secret = pi.client_secret
+        else:
+            client_secret = payment_intent_id.client_secret
+
+        return {
+            "client_secret": client_secret,
+            "subscription_id": subscription.id,
+            "customer_id": customer.id,
+        }
+
+    except stripe.error.CardError as e:  # type: ignore
+        raise HTTPException(status_code=400, detail=e.user_message)
+    except stripe.error.StripeError as e:  # type: ignore
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Ruta — Cancelar suscripción incompleta (cleanup en caso de error de pago)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/cancel-subscription")
+async def cancel_subscription(body: dict):
+    subscription_id = body.get("subscription_id")
+    if subscription_id:
+        try:
+            stripe.Subscription.cancel(subscription_id)
+        except Exception:
+            pass
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Ruta de prueba — envío de email
+# ---------------------------------------------------------------------------
+
+
+class TestEmailRequest(BaseModel):
+    to_email: str
+    to_name: str = "Prueba"
+
+
+# ---------------------------------------------------------------------------
+# Admin — sólo accesible para el dueño de la plataforma
+# ---------------------------------------------------------------------------
+
+ADMIN_CLERK_USER_ID = os.environ.get("ADMIN_CLERK_USER_ID", "")
+
+
+def _require_admin(request: Request):
+    user_id = request.headers.get("x-clerk-user-id", "")
+    if not ADMIN_CLERK_USER_ID or user_id != ADMIN_CLERK_USER_ID:
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+
+@app.get("/api/admin/stats")
+def admin_stats(db: Session = Depends(get_db), _: None = Depends(_require_admin)):
+    from sqlalchemy import func, extract
+    from datetime import date
+
+    total_negocios = db.query(func.count(Negocio.id)).scalar()
+    negocios_activos = db.query(func.count(Negocio.id)).filter(Negocio.activo == True).scalar()
+    con_suscripcion = db.query(func.count(Negocio.id)).filter(
+        Negocio.stripe_subscription_id.isnot(None)
+    ).scalar()
+
+    hoy = date.today()
+    citas_mes = db.query(func.count(Cita.id)).filter(
+        extract("month", Cita.hora_inicio) == hoy.month,
+        extract("year", Cita.hora_inicio) == hoy.year,
+    ).scalar()
+
+    ingresos_mes = db.query(func.coalesce(func.sum(Cita.monto_anticipo), 0)).filter(
+        Cita.pagado == True,
+        extract("month", Cita.hora_inicio) == hoy.month,
+        extract("year", Cita.hora_inicio) == hoy.year,
+    ).scalar()
+
+    return {
+        "total_negocios": total_negocios,
+        "negocios_activos": negocios_activos,
+        "con_suscripcion": con_suscripcion,
+        "citas_mes": citas_mes,
+        "ingresos_mes": float(ingresos_mes),
+    }
+
+
+@app.get("/api/admin/negocios")
+def admin_negocios(db: Session = Depends(get_db), _: None = Depends(_require_admin)):
+    from sqlalchemy import func
+
+    negocios = db.query(Negocio).order_by(Negocio.fecha_creacion.desc()).all()
+    result = []
+    for n in negocios:
+        total_citas = db.query(func.count(Cita.id)).filter(Cita.negocio_id == n.id).scalar()
+        admin_emp = next(
+            (e for e in n.empleados if e.rol.value == "ADMIN"), None
+        )
+        result.append({
+            "id": str(n.id),
+            "nombre": n.nombre,
+            "slug": n.slug,
+            "giro": n.giro,
+            "email": admin_emp.email if admin_emp else None,
+            "activo": n.activo,
+            "con_suscripcion": bool(n.stripe_subscription_id),
+            "stripe_charges_enabled": n.stripe_charges_enabled,
+            "total_citas": total_citas,
+            "fecha_creacion": n.fecha_creacion.isoformat(),
+        })
+    return result
+
+
+@app.patch("/api/admin/negocio/{negocio_id}/activo")
+def admin_toggle_activo(
+    negocio_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_admin),
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+    negocio.activo = not negocio.activo
+    db.commit()
+    return {"activo": negocio.activo}
+
+
+@app.get("/api/debug-env")
+async def debug_env():
+    return {
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", "EMPTY"),
+        "SUPABASE_SERVICE_KEY": "SET" if os.environ.get("SUPABASE_SERVICE_KEY") else "EMPTY",
+        "BREVO_API_KEY": "SET" if os.environ.get("BREVO_API_KEY") else "EMPTY",
+        "env_path": _env_path,
+        "env_path_exists": os.path.exists(_env_path),
+    }
+
+
+@app.post("/api/test-email")
+async def test_email(body: TestEmailRequest):
+    """Envía un email de prueba para verificar la configuración de Brevo."""
+    from .notificaciones import enviar_email as _enviar
+    from datetime import datetime as _dt
+
+    ok = _enviar(
+        to_email=body.to_email,
+        to_name=body.to_name,
+        subject="Prueba de email — AgendaAbierta",
+        html=f"""
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
+          <h2 style="color:#16a34a">Email de prueba</h2>
+          <p>Este es un email de prueba enviado desde AgendaAbierta.</p>
+          <p style="color:#9ca3af;font-size:12px">Enviado el {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        """,
+    )
+    if ok:
+        return {"ok": True, "mensaje": f"Email enviado a {body.to_email}"}
+    raise HTTPException(
+        status_code=502,
+        detail="No se pudo enviar el email. Revisa los logs del servidor y verifica BREVO_API_KEY y el dominio remitente.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rutas — Stripe Connect (pagos del negocio a sus clientes)
+# ---------------------------------------------------------------------------
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4001")
+
+
+@app.post("/api/negocio/{negocio_id}/stripe-connect/onboard")
+async def stripe_connect_onboard(negocio_id: str, db: Session = Depends(get_db)):
+    """
+    Crea (o recupera) una cuenta Stripe Express para el negocio
+    y devuelve la URL de onboarding de Stripe.
+    """
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+
+    try:
+        # Crear cuenta Express si no existe aún
+        if not negocio.stripe_connect_id:
+            account = stripe.Account.create(
+                type="express",
+                country="MX",
+                email=negocio.email_negocio or None,
+                capabilities={"card_payments": {"requested": True}, "transfers": {"requested": True}},
+                business_profile={"name": negocio.nombre},
+            )
+            negocio.stripe_connect_id = account.id
+            db.commit()
+
+        # Generar link de onboarding
+        link = stripe.AccountLink.create(
+            account=negocio.stripe_connect_id,
+            refresh_url=f"{FRONTEND_URL}/dashboard?stripe_refresh=1&negocio={negocio_id}",
+            return_url=f"{FRONTEND_URL}/dashboard?stripe_connected=1",
+            type="account_onboarding",
+        )
+        return {"url": link.url, "stripe_connect_id": negocio.stripe_connect_id}
+    except stripe.error.StripeError as e:  # type: ignore
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/api/negocio/{negocio_id}/stripe-connect/status")
+async def stripe_connect_status(negocio_id: str, db: Session = Depends(get_db)):
+    """Verifica si la cuenta Stripe Connect del negocio está activa."""
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio or not negocio.stripe_connect_id:
+        return {"conectado": False}
+    try:
+        account = stripe.Account.retrieve(negocio.stripe_connect_id)
+        conectado = bool(account.get("charges_enabled", False))
+        # Persistir el estado para que la página pública lo lea sin llamar a Stripe
+        if negocio.stripe_charges_enabled != conectado:
+            negocio.stripe_charges_enabled = conectado
+            db.commit()
+        return {"conectado": conectado, "stripe_connect_id": negocio.stripe_connect_id}
+    except stripe.error.StripeError:  # type: ignore
+        return {"conectado": False}
+
+
+# ---------------------------------------------------------------------------
+# Webhook de Stripe
+# ---------------------------------------------------------------------------
+
+@app.post("/webhook/stripe")
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Recibe eventos de Stripe.
+    Eventos manejados:
+      - checkout.session.completed  → marca la cita como pagada y CONFIRMADA
+      - account.updated             → (futuro) sincronizar estado del onboarding
+    """
+    import json as _json
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    if STRIPE_WEBHOOK_SECRET:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        except stripe.error.SignatureVerificationError:  # type: ignore
+            raise HTTPException(status_code=400, detail="Firma inválida")
+    else:
+        # Sin secret configurado (desarrollo local) — parsear directamente
+        try:
+            event = _json.loads(payload)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Payload inválido")
+
+    event_type = event.get("type") if isinstance(event, dict) else event["type"]
+
+    # ── checkout.session.completed ─────────────────────────────────────────
+    if event_type == "checkout.session.completed":
+        session_obj = event["data"]["object"]
+        cita_id_str = (session_obj.get("metadata") or {}).get("cita_id")
+        if cita_id_str:
+            try:
+                cita_id = uuid.UUID(cita_id_str)
+                cita = db.query(Cita).filter(Cita.id == cita_id).first()
+                if cita:
+                    cita.pagado = True
+                    if cita.estado == EstadoCita.PENDIENTE:
+                        cita.estado = EstadoCita.CONFIRMADA
+                    db.commit()
+                    print(f"[webhook] Cita {cita_id_str} marcada como pagada y CONFIRMADA")
+            except Exception as e:
+                print(f"[webhook] Error actualizando cita {cita_id_str}: {e}")
+
+    # ── account.updated ────────────────────────────────────────────────────
+    elif event_type == "account.updated":
+        account_obj = event["data"]["object"]
+        charges_enabled = bool(account_obj.get("charges_enabled", False))
+        account_id = account_obj.get("id", "")
+        print(f"[webhook] account.updated {account_id} charges_enabled={charges_enabled}")
+        try:
+            negocio = db.query(Negocio).filter(
+                Negocio.stripe_connect_id == account_id
+            ).first()
+            if negocio and negocio.stripe_charges_enabled != charges_enabled:
+                negocio.stripe_charges_enabled = charges_enabled
+                db.commit()
+        except Exception as e:
+            print(f"[webhook] Error actualizando stripe_charges_enabled: {e}")
+
+    return {"received": True}
+
+
+# ---------------------------------------------------------------------------
 # Ruta — Registro inicial
 # ---------------------------------------------------------------------------
 
@@ -892,7 +1560,7 @@ async def get_analitica(negocio_id: str, db: Session = Depends(get_db)):
 async def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     try:
         print(
-            f"🏢 Creando Negocio: {request.businessName} (Giro: {request.selectedType})"
+            f"Creando Negocio: {request.businessName} (Giro: {request.selectedType})"
         )
 
         nuevo_negocio = Negocio(
@@ -901,6 +1569,8 @@ async def register_user(request: RegisterRequest, db: Session = Depends(get_db))
             + "-"
             + str(uuid.uuid4())[:8],
             giro=request.selectedType,
+            stripe_customer_id=request.stripeCustomerId or None,
+            stripe_subscription_id=request.stripeSubscriptionId or None,
         )
         db.add(nuevo_negocio)
         db.flush()
@@ -957,7 +1627,7 @@ async def register_user(request: RegisterRequest, db: Session = Depends(get_db))
                     db.add(nuevo_horario)
 
         db.commit()
-        print(f"✅ Datos guardados en SQLite (agenda.db)")
+        print(f"Datos guardados en SQLite (agenda.db)")
 
         send_welcome_email(request.email, request.name, request.plan)
         token = create_jwt_token(str(nuevo_empleado.id), request.email)
@@ -1015,6 +1685,7 @@ class NegocioPublicoResponse(BaseModel):
     url_logo: Optional[str] = None
     servicios: List[ServicioPublico]
     empleados: List[EmpleadoPublico]
+    acepta_pago_en_linea: bool = False
 
 
 class SlotsResponse(BaseModel):
@@ -1127,6 +1798,7 @@ async def get_negocio_publico(slug: str, db: Session = Depends(get_db)):
             for s in servicios
         ],
         empleados=[EmpleadoPublico(id=str(e.id), nombre=e.nombre) for e in empleados],
+        acepta_pago_en_linea=bool(negocio.stripe_charges_enabled),
     )
 
 
@@ -1393,7 +2065,7 @@ async def reservar_cita_publica(
     checkout_url = None
     if body.metodo_pago == "en_linea" and body.success_url and body.cancel_url:
         try:
-            session = stripe.checkout.Session.create(
+            session_params: dict = dict(
                 payment_method_types=["card"],
                 line_items=[
                     {
@@ -1411,13 +2083,43 @@ async def reservar_cita_publica(
                 metadata={"cita_id": str(nueva_cita.id)},
                 customer_email=body.cliente_email or None,
             )
+            # Si el negocio tiene Stripe Connect, enrutar el pago a su cuenta
+            if negocio.stripe_connect_id:
+                pi_data: dict = {"transfer_data": {"destination": negocio.stripe_connect_id}}
+                if STRIPE_PLATFORM_FEE_PCT > 0:
+                    pi_data["application_fee_amount"] = int(
+                        servicio.precio * 100 * STRIPE_PLATFORM_FEE_PCT / 100
+                    )
+                session_params["payment_intent_data"] = pi_data
+            session = stripe.checkout.Session.create(**session_params)
             checkout_url = session.url
+            nueva_cita.stripe_session_id = session.id
+            db.commit()
         except Exception as e:
-            # Si Stripe falla, la cita queda guardada pero avisamos
             raise HTTPException(
                 status_code=502,
                 detail=f"Cita guardada pero no se pudo crear el pago: {str(e)}",
             )
+
+    # Enviar notificaciones en background (no bloquea la respuesta)
+    _notif_executor.submit(
+        notificar_reserva,
+        negocio_nombre=negocio.nombre,
+        negocio_email=negocio.email_negocio,
+        negocio_telefono=negocio.telefono_negocio,
+        negocio_direccion=negocio.direccion,
+        negocio_clabe=negocio.clabe,
+        negocio_banco=negocio.banco,
+        negocio_titular=negocio.titular_cuenta,
+        notif_email=bool(negocio.notif_email),
+        notif_whatsapp=bool(negocio.notif_whatsapp),
+        cliente_nombre=body.cliente_nombre,
+        cliente_email=body.cliente_email,
+        cliente_telefono=body.cliente_telefono,
+        servicio_nombre=servicio.nombre,
+        empleado_nombre=empleado.nombre if empleado else "—",
+        hora_inicio=hora_inicio,
+    )
 
     return ReservaResponse(
         success=True,

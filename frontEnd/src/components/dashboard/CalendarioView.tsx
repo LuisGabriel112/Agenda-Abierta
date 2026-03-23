@@ -527,6 +527,12 @@ function DetalleCitaModal({
                 {cita.estado.charAt(0) + cita.estado.slice(1).toLowerCase()}
               </span>
             </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-500 font-medium">Pago</span>
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${cita.pagado ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                {cita.pagado ? "Pagado" : cita.metodo_pago === "en_linea" ? "Pendiente" : "En físico"}
+              </span>
+            </div>
           </div>
 
           <div>
@@ -797,7 +803,7 @@ export default function CalendarioView() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                 </svg>
-                Bloquear tiempo
+                <span className="hidden sm:inline">Bloquear tiempo</span>
               </button>
               <button
                 onClick={() => { setSavingError(""); setShowNuevaCita(true); }}
@@ -892,8 +898,9 @@ export default function CalendarioView() {
           {/* ── Vista Hoy / Semana ── */}
           {vista !== "mes" && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
               {/* Day Headers */}
-              <div className={`grid border-b border-gray-100`} style={{ gridTemplateColumns: `64px repeat(${gridDates.length}, 1fr)` }}>
+              <div className={`grid border-b border-gray-100`} style={{ gridTemplateColumns: `64px repeat(${gridDates.length}, minmax(80px, 1fr))` }}>
                 <div className="p-3" />
                 {gridDates.map((date, i) => {
                   const isToday = date.toDateString() === today.toDateString();
@@ -922,7 +929,7 @@ export default function CalendarioView() {
                     <div
                       key={hora}
                       className="grid border-b border-gray-50 last:border-0"
-                      style={{ height: "64px", gridTemplateColumns: `64px repeat(${gridDates.length}, 1fr)` }}
+                      style={{ height: "64px", gridTemplateColumns: `64px repeat(${gridDates.length}, minmax(80px, 1fr))` }}
                     >
                       <div className="flex items-start pt-2 pr-3 justify-end shrink-0">
                         <span className="text-xs text-gray-400 font-medium">{hora}</span>
@@ -944,6 +951,9 @@ export default function CalendarioView() {
                               >
                                 <p className="text-xs font-bold truncate">{cita.servicio_nombre}</p>
                                 <p className="text-xs truncate opacity-80">{cita.cliente_nombre}</p>
+                                {cita.pagado && (
+                                  <span className="text-[9px] font-bold bg-green-600 text-white px-1 rounded">Pagado</span>
+                                )}
                               </div>
                             ))}
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -958,12 +968,13 @@ export default function CalendarioView() {
                   ))}
                 </div>
               )}
+              </div>{/* /overflow-x-auto */}
             </div>
           )}
         </div>
 
-        {/* Right Sidebar */}
-        <div className="w-72 border-l border-gray-100 bg-white p-5 overflow-y-auto shrink-0 flex flex-col gap-5">
+        {/* Right Sidebar — oculto en móvil */}
+        <div className="w-72 border-l border-gray-100 bg-white p-5 overflow-y-auto shrink-0 flex-col gap-5 hidden lg:flex">
           {/* Próximas Citas */}
           <div>
             <div className="flex items-center justify-between mb-4">

@@ -13,6 +13,14 @@ export interface NegocioData {
   color_marca: string | null;
   url_logo: string | null;
   fecha_creacion: string;
+  email_negocio: string | null;
+  telefono_negocio: string | null;
+  notif_email: boolean;
+  notif_whatsapp: boolean;
+  clabe: string | null;
+  banco: string | null;
+  titular_cuenta: string | null;
+  stripe_connect_id: string | null;
 }
 
 export interface ServicioData {
@@ -57,7 +65,7 @@ interface UseNegocioReturn {
     fields: Partial<
       Pick<
         NegocioData,
-        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca"
+        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
       >
     >,
   ) => Promise<boolean>;
@@ -211,7 +219,7 @@ export function useNegocio(): UseNegocioReturn {
       fields: Partial<
         Pick<
           NegocioData,
-          "nombre" | "giro" | "descripcion" | "direccion" | "color_marca"
+          "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
         >
       >,
     ): Promise<boolean> => {

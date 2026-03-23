@@ -75,6 +75,20 @@ class Negocio(Base):
     direccion: Mapped[Optional[str]] = mapped_column(String(255))
     color_marca: Mapped[Optional[str]] = mapped_column(String(7))  # Ej: #FF5733
     url_logo: Mapped[Optional[str]] = mapped_column(String(255))
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100))
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(100))
+    email_negocio: Mapped[Optional[str]] = mapped_column(String(255))
+    telefono_negocio: Mapped[Optional[str]] = mapped_column(String(30))
+    notif_email: Mapped[bool] = mapped_column(default=True)
+    notif_whatsapp: Mapped[bool] = mapped_column(default=False)
+    # Pagos — cuenta bancaria
+    clabe: Mapped[Optional[str]] = mapped_column(String(18))
+    banco: Mapped[Optional[str]] = mapped_column(String(100))
+    titular_cuenta: Mapped[Optional[str]] = mapped_column(String(150))
+    # Stripe Connect Express (para cobros con tarjeta)
+    stripe_connect_id: Mapped[Optional[str]] = mapped_column(String(100))
+    stripe_charges_enabled: Mapped[bool] = mapped_column(default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -228,6 +242,9 @@ class Cita(Base):
     )
     monto_anticipo: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), default=0)
     metodo_pago: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "en_linea" | "en_fisico"
+    pagado: Mapped[bool] = mapped_column(default=False)
+    stripe_session_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    recordatorio_enviado: Mapped[bool] = mapped_column(default=False)
 
     # Relaciones
     negocio: Mapped["Negocio"] = relationship(back_populates="citas")

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { UserButton, useUser, useClerk } from "@clerk/react";
 import DashboardHome from "../components/dashboard/DashboardHome";
 import CalendarioView from "../components/dashboard/CalendarioView";
@@ -6,6 +6,7 @@ import ClientesView from "../components/dashboard/ClientesView";
 import AnaliticaView from "../components/dashboard/AnaliticaView";
 import ConfiguracionView from "../components/dashboard/ConfiguracionView";
 import ServiciosView from "../components/dashboard/ServiciosView";
+import EmpleadosView from "../components/dashboard/EmpleadosView";
 import { useNegocio } from "../hooks/useNegocio";
 import { useApi } from "../hooks/useApi";
 
@@ -14,6 +15,7 @@ type Section =
   | "calendario"
   | "clientes"
   | "servicios"
+  | "equipo"
   | "analitica"
   | "configuracion";
 
@@ -63,6 +65,17 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
+    id: "equipo",
+    label: "Equipo",
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+    ),
+  },
+  {
     id: "analitica",
     label: "Analítica",
     icon: (
@@ -93,6 +106,34 @@ export default function Dashboard() {
   const { dashboardData, isLoadingDashboard, updateNegocio, negocioId, refetchDashboard } = useNegocio();
   const { updateHorarios } = useApi(negocioId);
 
+  // Detectar retorno del onboarding de Stripe Connect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("stripe_connected") === "1") {
+      refetchDashboard().then(() => {
+        setActive("configuracion");
+      });
+      // Limpiar el parámetro de la URL sin recargar
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("stripe_refresh") === "1") {
+      const negocioParam = params.get("negocio");
+      if (negocioParam) {
+        // Reintenta el onboarding automáticamente
+        fetch(`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioParam}/stripe-connect/onboard`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+          .then((r) => r.json())
+          .then((d) => { if (d.url) window.location.href = d.url; })
+          .catch(() => setActive("configuracion"));
+      }
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [refetchDashboard]);
+
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const handleNavigate = useCallback(
     (section: "servicios" | "configuracion" | "calendario") => {
       setActive(section);
@@ -102,7 +143,86 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#f4f7f6] font-sans flex text-slate-900">
-      {/* ── Sidebar ── */}
+      {/* ── Mobile overlay backdrop ── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile drawer ── */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#f4f7f6] border-r border-gray-200 flex flex-col justify-between transition-transform duration-300 md:hidden ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div>
+          {/* Logo + close */}
+          <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100">
+            <div
+              className="flex items-center gap-x-2 cursor-pointer"
+              onClick={() => { setActive("dashboard"); setMobileOpen(false); }}
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-50">
+                <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <span className="text-xl font-bold text-gray-900 tracking-tight">AgendaAbierta</span>
+            </div>
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Nav */}
+          <div className="px-4 mt-8">
+            <p className="px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Menú Principal</p>
+            <nav className="space-y-1">
+              {NAV_ITEMS.map((item) => {
+                const isActive = active === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { setActive(item.id); setMobileOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition-colors text-left ${
+                      isActive
+                        ? "bg-green-600 text-white shadow-sm shadow-green-600/20"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <svg className={`w-5 h-5 ${isActive ? "text-white" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      {item.icon}
+                    </svg>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Bottom */}
+        <div className="p-4 mb-4 space-y-3">
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-2 text-gray-500 hover:text-red-600 hover:bg-red-50 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Cerrar Sesión
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Sidebar (desktop) ── */}
       <aside className="w-64 bg-[#f4f7f6] border-r border-gray-200 hidden md:flex flex-col justify-between sticky top-0 h-screen shrink-0">
         <div>
           {/* Logo */}
@@ -219,13 +339,23 @@ export default function Dashboard() {
       {/* ── Main ── */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Top Navbar */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 shrink-0 sticky top-0 z-30">
-          {/* Left: page title */}
-          <h1 className="text-sm font-semibold text-gray-500 capitalize hidden sm:block">
-            {NAV_ITEMS.find((n) => n.id === active)?.label}
-          </h1>
+        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-30">
+          {/* Left: hamburger (mobile) + page title */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-sm font-semibold text-gray-500 capitalize hidden sm:block">
+              {NAV_ITEMS.find((n) => n.id === active)?.label}
+            </h1>
+          </div>
 
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-3">
             {/* Plan badge */}
             <div className="hidden sm:flex items-center gap-1.5 bg-green-50 border border-green-100 text-green-700 px-3 py-1.5 rounded-full text-xs font-bold">
               <svg
@@ -313,6 +443,7 @@ export default function Dashboard() {
           {active === "calendario" && <CalendarioView />}
           {active === "clientes" && <ClientesView />}
           {active === "servicios" && <ServiciosView onDataChanged={refetchDashboard} />}
+          {active === "equipo" && <EmpleadosView />}
           {active === "analitica" && <AnaliticaView />}
           {active === "configuracion" && (
             <ConfiguracionView

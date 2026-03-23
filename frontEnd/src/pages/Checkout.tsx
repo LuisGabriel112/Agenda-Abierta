@@ -54,10 +54,7 @@ function CheckoutContent() {
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) {
-      // Stripe no ha cargado aún
-      return;
-    }
+    if (!stripe || !elements) return;
 
     setIsProcessing(true);
     setErrorMessage("");
@@ -65,32 +62,72 @@ function CheckoutContent() {
     const cardElement = elements.getElement(CardElement);
     if (!cardElement) return;
 
-    // Pedimos a Stripe que valide la tarjeta de forma segura
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
+    // 1. Crear PaymentMethod con los datos de la tarjeta
+    const { error: pmError, paymentMethod } = await stripe.createPaymentMethod({
       type: "card",
       card: cardElement,
     });
 
-    if (error) {
-      // La tarjeta tiene error (fondos insuficientes, CVC mal, etc)
-      setErrorMessage(
-        error.message || "Ocurrió un error al validar la tarjeta.",
-      );
+    if (pmError) {
+      setErrorMessage(pmError.message || "Error al validar la tarjeta.");
       setIsProcessing(false);
-    } else {
-      // Éxito: Todo está bien, nos llevamos el id del método de pago al registro
+      return;
+    }
+
+    try {
+      // 2. Crear suscripción en el backend
+      const amountCents = Math.round(total * 100);
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/create-subscription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentMethodId: paymentMethod.id,
+          plan: selectedPlan,
+          isAnnual,
+          amountCents,
+          email: "",
+          businessName: businessName || "",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Error al crear la suscripción.");
+
+      // 3. Confirmar el pago con el client_secret y el método de pago
+      const { error: confirmError } = await stripe.confirmCardPayment(data.client_secret, {
+        payment_method: paymentMethod.id,
+      });
+
+      if (confirmError) {
+        // Cancelar la suscripción incompleta para evitar duplicados
+        await fetch(`${import.meta.env.VITE_API_BASE}/api/cancel-subscription`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription_id: data.subscription_id }),
+        }).catch(() => {});
+        setErrorMessage(confirmError.message || "El pago fue rechazado.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // 4. Pago exitoso → ir al registro con los IDs de Stripe
       navigate("/register", {
         state: {
           plan: selectedPlan,
-          isAnnual: isAnnual,
+          isAnnual,
           total: total.toFixed(2),
           paymentMethodId: paymentMethod.id,
+          stripeCustomerId: data.customer_id,
+          stripeSubscriptionId: data.subscription_id,
           businessName,
           selectedType,
           services,
           schedule,
         },
       });
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Error desconocido.");
+      setIsProcessing(false);
     }
   };
 

@@ -1,13 +1,6 @@
-import { useNavigate } from "react-router-dom";
+import { SignUpButton } from "@clerk/react";
 
 export default function Hero() {
-  const navigate = useNavigate();
-
-  const handleStart = (e: React.FormEvent) => {
-    e.preventDefault();
-    navigate("/onboarding");
-  };
-
   return (
     <section className="relative overflow-hidden bg-[#f9fafb] pt-16 pb-24 sm:pt-24 lg:pb-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -31,23 +24,13 @@ export default function Hero() {
               profesionales que valoran su tiempo.
             </p>
 
-            <form
-              onSubmit={handleStart}
-              className="mt-8 flex flex-col sm:flex-row max-w-md gap-3"
-            >
-              <input
-                type="email"
-                required
-                className="w-full flex-auto rounded-lg border-0 px-4 py-3.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm sm:leading-6 bg-white outline-none transition-shadow"
-                placeholder="Email de tu negocio"
-              />
-              <button
-                type="submit"
-                className="flex-none rounded-lg bg-brand-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-all whitespace-nowrap cursor-pointer"
-              >
-                Empezar ahora
-              </button>
-            </form>
+            <div className="mt-8">
+              <SignUpButton mode="modal">
+                <button className="rounded-lg bg-brand-600 px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 transition-all cursor-pointer">
+                  Empezar ahora
+                </button>
+              </SignUpButton>
+            </div>
 
             <div className="mt-8 flex items-center gap-x-4 text-sm text-gray-500">
               <div className="flex -space-x-2">

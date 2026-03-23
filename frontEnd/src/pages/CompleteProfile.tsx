@@ -13,10 +13,9 @@ const GIROS = [
   { id: "entrenamiento", label: "Entrenamiento Personal", emoji: "💪" },
   { id: "tatuajes", label: "Tatuajes / Piercing", emoji: "🎨" },
   { id: "veterinaria", label: "Veterinaria", emoji: "🐾" },
+  { id: "estudio_musical", label: "Estudio Musical", emoji: "🎵" },
   { id: "otro", label: "Otro", emoji: "📋" },
 ];
-
-const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 export default function CompleteProfile() {
   const navigate = useNavigate();
@@ -26,7 +25,6 @@ export default function CompleteProfile() {
   const [step, setStep] = useState<1 | 2>(1);
   const [businessName, setBusinessName] = useState("");
   const [selectedGiro, setSelectedGiro] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleStep1 = () => {
@@ -38,51 +36,19 @@ export default function CompleteProfile() {
     setStep(2);
   };
 
-  const handleFinish = async () => {
+  const handleFinish = () => {
     if (!selectedGiro) {
       setError("Por favor selecciona el giro de tu negocio.");
       return;
     }
-    if (!user) return;
-
-    setIsLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch(`${API_BASE}/api/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: user.fullName ?? user.firstName ?? "Usuario",
-          email: user.primaryEmailAddress?.emailAddress ?? "",
-          password: "",
-          plan: "basico",
-          isAnnual: false,
-          total: "0.00",
-          paymentMethodId: "google_oauth",
-          businessName: businessName.trim(),
-          selectedType: selectedGiro,
-          services: [],
-          schedule: {},
-          clerkUserId: user.id,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Error al crear el negocio.");
-      }
-
-      // Guardar negocio_id localmente para que el dashboard lo use de inmediato
-      localStorage.setItem("agenda_negocio_id", data.negocio_id);
-
-      navigate("/dashboard", { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido.");
-    } finally {
-      setIsLoading(false);
-    }
+    navigate("/checkout", {
+      state: {
+        businessName: businessName.trim(),
+        selectedType: selectedGiro,
+        services: [],
+        schedule: {},
+      },
+    });
   };
 
   return (
@@ -277,32 +243,23 @@ export default function CompleteProfile() {
                 </button>
                 <button
                   onClick={handleFinish}
-                  disabled={isLoading || !selectedGiro}
+                  disabled={!selectedGiro}
                   className="flex-2 flex-grow-[2] bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Creando tu agenda...
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2.5}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                      Crear mi agenda
-                    </>
-                  )}
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                  Ver planes
                 </button>
               </div>
             </div>

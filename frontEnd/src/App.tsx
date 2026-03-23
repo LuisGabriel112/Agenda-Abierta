@@ -10,13 +10,16 @@ import PaymentFailed from "./pages/PaymentFailed";
 import Dashboard from "./pages/Dashboard";
 import CompleteProfile from "./pages/CompleteProfile";
 import NegocioPublico from "./pages/NegocioPublico";
+import AdminPanel from "./pages/AdminPanel";
 
 const API_BASE = import.meta.env.VITE_API_BASE as string;
+const ADMIN_ID = import.meta.env.VITE_ADMIN_CLERK_USER_ID as string;
 
 type RegStatus = "loading" | "registered" | "not_registered";
 
 function RootRoute() {
   const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
 
   if (!isLoaded)
     return (
@@ -25,7 +28,12 @@ function RootRoute() {
       </div>
     );
 
-  return isSignedIn ? <Navigate to="/dashboard" replace /> : <Landing />;
+  if (isSignedIn) {
+    return user?.id === ADMIN_ID
+      ? <Navigate to="/admin" replace />
+      : <Navigate to="/dashboard" replace />;
+  }
+  return <Landing />;
 }
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -90,6 +98,7 @@ function App() {
         <Route path="/payment-failed" element={<PaymentFailed />} />
         <Route path="/complete-profile" element={<CompleteProfile />} />
         <Route path="/b/:slug" element={<NegocioPublico />} />
+        <Route path="/admin" element={<AdminPanel />} />
         <Route
           path="/dashboard"
           element={

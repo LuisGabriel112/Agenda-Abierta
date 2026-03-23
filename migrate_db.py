@@ -28,6 +28,25 @@ def run():
         ("empleados", "clerk_user_id", "TEXT"),
         # Método de pago elegido al reservar
         ("citas", "metodo_pago", "TEXT"),
+        # Stripe Subscriptions
+        ("negocios", "stripe_customer_id", "TEXT"),
+        ("negocios", "stripe_subscription_id", "TEXT"),
+        # Coordenadas para mapa
+        ("negocios", "lat", "REAL"),
+        ("negocios", "lon", "REAL"),
+        # Notificaciones
+        ("negocios", "email_negocio", "TEXT"),
+        ("negocios", "telefono_negocio", "TEXT"),
+        ("negocios", "notif_email", "INTEGER DEFAULT 1"),
+        ("negocios", "notif_whatsapp", "INTEGER DEFAULT 0"),
+        # Pagos CLABE + Stripe Connect
+        ("negocios", "clabe", "TEXT"),
+        ("negocios", "banco", "TEXT"),
+        ("negocios", "titular_cuenta", "TEXT"),
+        ("negocios", "stripe_connect_id", "TEXT"),
+        # Estado de pago por cita
+        ("citas", "pagado", "INTEGER DEFAULT 0"),
+        ("citas", "stripe_session_id", "TEXT"),
     ]
 
     for table, column, col_type in migrations:

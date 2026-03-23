@@ -32,6 +32,7 @@ interface NegocioPublico {
   url_logo: string | null;
   servicios: ServicioPublico[];
   empleados: EmpleadoPublico[];
+  acepta_pago_en_linea: boolean;
 }
 
 interface ReservaState {
@@ -308,6 +309,7 @@ export default function NegocioPublicoPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [pagoExitoso, setPagoExitoso] = useState(false);
+  const [pagoCancelado, setPagoCancelado] = useState(false);
   const [paso, setPaso] = useState<Paso>(0);
   const [reserva, setReserva] = useState<ReservaState>({
     servicioId: "",
@@ -344,10 +346,15 @@ export default function NegocioPublicoPage() {
     const pago = searchParams.get("pago");
     if (pago === "exitoso") {
       setPagoExitoso(true);
-    } else if (pago === "cancelado") {
       setSearchParams({});
+    } else if (pago === "cancelado") {
+      setPagoCancelado(true);
+      setSearchParams({});
+      // Ocultar el aviso después de 6 segundos
+      const t = setTimeout(() => setPagoCancelado(false), 6000);
+      return () => clearTimeout(t);
     }
-  }, [searchParams]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load negocio ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -575,6 +582,17 @@ export default function NegocioPublicoPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
+      {/* ── Banner pago cancelado ── */}
+      {pagoCancelado && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-fade-in">
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Pago cancelado. Tu cita no fue confirmada.
+          <button onClick={() => setPagoCancelado(false)} className="ml-2 opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       {/* ── LANDING ── */}
       <div
         className={`transition-all duration-300 ${wizardOpen ? "lg:mr-[480px]" : ""}`}
@@ -1349,7 +1367,7 @@ export default function NegocioPublicoPage() {
                       <label className="block text-xs font-semibold text-gray-600 mb-2">
                         ¿Cómo vas a pagar? <span className="text-red-500">*</span>
                       </label>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className={`grid gap-3 ${negocio.acepta_pago_en_linea ? "grid-cols-2" : "grid-cols-1"}`}>
                         <button
                           type="button"
                           onClick={() => setReserva((r) => ({ ...r, metodoPago: "en_fisico" }))}
@@ -1367,23 +1385,25 @@ export default function NegocioPublicoPage() {
                             <span className="text-xs font-normal text-green-600">Al llegar</span>
                           )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setReserva((r) => ({ ...r, metodoPago: "en_linea" }))}
-                          className={`flex flex-col items-center gap-2 border-2 rounded-xl p-4 text-sm font-semibold transition-all ${
-                            reserva.metodoPago === "en_linea"
-                              ? "border-green-500 bg-green-50 text-green-800"
-                              : "border-gray-200 text-gray-600 hover:border-gray-300"
-                          }`}
-                        >
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-                          </svg>
-                          Pagar en línea
-                          {reserva.metodoPago === "en_linea" && (
-                            <span className="text-xs font-normal text-green-600">Tarjeta / débito</span>
-                          )}
-                        </button>
+                        {negocio.acepta_pago_en_linea && (
+                          <button
+                            type="button"
+                            onClick={() => setReserva((r) => ({ ...r, metodoPago: "en_linea" }))}
+                            className={`flex flex-col items-center gap-2 border-2 rounded-xl p-4 text-sm font-semibold transition-all ${
+                              reserva.metodoPago === "en_linea"
+                                ? "border-green-500 bg-green-50 text-green-800"
+                                : "border-gray-200 text-gray-600 hover:border-gray-300"
+                            }`}
+                          >
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                            </svg>
+                            Pagar en línea
+                            {reserva.metodoPago === "en_linea" && (
+                              <span className="text-xs font-normal text-green-600">Tarjeta / débito</span>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

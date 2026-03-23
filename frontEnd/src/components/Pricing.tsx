@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { SignUpButton } from "@clerk/react";
 
 export default function Pricing() {
   const [isAnnual, setIsAnnual] = useState(false);
-  const navigate = useNavigate();
 
   // Precios base (Mensuales)
   const priceEmprendedor = 399;
@@ -129,12 +128,11 @@ export default function Pricing() {
                 Calendario personalizado
               </li>
             </ul>
-            <button
-              onClick={() => navigate("/onboarding")}
-              className="mt-8 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-center text-sm font-semibold text-gray-900 shadow-sm transition-all duration-300 hover:bg-gray-50 hover:border-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer"
-            >
-              Elegir plan
-            </button>
+            <SignUpButton mode="modal">
+              <button className="mt-8 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-center text-sm font-semibold text-gray-900 shadow-sm transition-all duration-300 hover:bg-gray-50 hover:border-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer">
+                Elegir plan
+              </button>
+            </SignUpButton>
           </div>
 
           {/* Plan 2 - Popular */}
@@ -222,12 +220,11 @@ export default function Pricing() {
                 Analítica avanzada
               </li>
             </ul>
-            <button
-              onClick={() => navigate("/onboarding")}
-              className="mt-8 w-full rounded-xl bg-brand-600 px-3 py-3 text-center text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-brand-700 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 cursor-pointer"
-            >
-              Elegir Pro
-            </button>
+            <SignUpButton mode="modal">
+              <button className="mt-8 w-full rounded-xl bg-brand-600 px-3 py-3 text-center text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-brand-700 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 cursor-pointer">
+                Elegir Pro
+              </button>
+            </SignUpButton>
           </div>
         </div>
       </div>

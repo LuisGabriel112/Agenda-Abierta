@@ -1,0 +1,12 @@
+.env
+.env.*
+frontEnd/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.md
+static/logos/*
+migrate_*.py

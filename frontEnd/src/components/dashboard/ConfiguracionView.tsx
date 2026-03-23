@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useClerk } from "@clerk/react";
+import { useNavigate } from "react-router-dom";
 import type { NegocioData, HorarioData } from "../../hooks/useNegocio";
 
 interface ConfiguracionViewProps {
@@ -10,7 +12,7 @@ interface ConfiguracionViewProps {
     fields: Partial<
       Pick<
         NegocioData,
-        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca"
+        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
       >
     >,
   ) => Promise<boolean>;
@@ -18,20 +20,9 @@ interface ConfiguracionViewProps {
   onDataChanged?: () => void;
 }
 
-interface Miembro {
-  nombre: string;
-  email: string;
-  rol: string;
-  estado: "Activo" | "Inactivo";
-}
 
 function initials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
 const DIAS_SEMANA = [
@@ -81,28 +72,6 @@ function Toggle({
   );
 }
 
-function Avatar({ nombre }: { nombre: string }) {
-  const initials = nombre
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  const colors = [
-    "bg-green-100 text-green-700",
-    "bg-blue-100 text-blue-700",
-    "bg-purple-100 text-purple-700",
-    "bg-yellow-100 text-yellow-700",
-  ];
-  const color = colors[nombre.charCodeAt(0) % colors.length];
-  return (
-    <div
-      className={`w-8 h-8 ${color} rounded-full flex items-center justify-center text-xs font-bold shrink-0`}
-    >
-      {initials}
-    </div>
-  );
-}
 
 export default function ConfiguracionView({
   negocio,
@@ -113,6 +82,8 @@ export default function ConfiguracionView({
   onSaveHorarios,
   onDataChanged,
 }: ConfiguracionViewProps) {
+  const { signOut } = useClerk();
+  const navigate = useNavigate();
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [direccion, setDireccion] = useState("");
   const [biografia, setBiografia] = useState("");
@@ -120,12 +91,19 @@ export default function ConfiguracionView({
   const [colorMarca, setColorMarca] = useState("#16a34a");
   const [emailNotif, setEmailNotif] = useState(true);
   const [whatsappNotif, setWhatsappNotif] = useState(false);
+  const [emailNegocio, setEmailNegocio] = useState("");
+  const [telefonoNegocio, setTelefonoNegocio] = useState("");
   const [cancelacion, setCancelacion] = useState("24 horas antes");
   const [terminosReembolso, setTerminosReembolso] = useState("");
-  const [miembros, setMiembros] = useState<Miembro[]>([]);
-  const [showInvitar, setShowInvitar] = useState(false);
-  const [invitarEmail, setInvitarEmail] = useState("");
-  const [invitarRol, setInvitarRol] = useState("Especialista");
+  // Pagos
+  const [clabe, setClabe] = useState("");
+  const [banco, setBanco] = useState("");
+  const [titularCuenta, setTitularCuenta] = useState("");
+  const [savingCuenta, setSavingCuenta] = useState(false);
+  const [cuentaSaved, setCuentaSaved] = useState(false);
+  const [cuentaError, setCuentaError] = useState("");
+  const [stripeConnecting, setStripeConnecting] = useState(false);
+  const [stripeConectado, setStripeConectado] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -134,6 +112,7 @@ export default function ConfiguracionView({
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoError, setLogoError] = useState("");
+
 
   // Horarios state
   const [horariosState, setHorariosState] = useState<HorarioData[]>(() =>
@@ -151,14 +130,34 @@ export default function ConfiguracionView({
       setBiografia(negocio.descripcion ?? "");
       setGiro(negocio.giro ?? "");
       setColorMarca(negocio.color_marca ?? "#16a34a");
+      setEmailNegocio(negocio.email_negocio ?? "");
+      setTelefonoNegocio(negocio.telefono_negocio ?? "");
+      setEmailNotif(negocio.notif_email ?? true);
+      setWhatsappNotif(negocio.notif_whatsapp ?? false);
+      setClabe(negocio.clabe ?? "");
+      setBanco(negocio.banco ?? "");
+      setTitularCuenta(negocio.titular_cuenta ?? "");
       const raw = negocio.url_logo ?? null;
       setLogoUrl(raw ? (raw.startsWith("http") ? raw : `${import.meta.env.VITE_API_BASE}${raw}`) : null);
     }
   }, [negocio]);
 
+  // Verificar charges_enabled real contra Stripe (no solo si stripe_connect_id existe)
+  useEffect(() => {
+    if (!negocioId || !negocio?.stripe_connect_id) {
+      setStripeConectado(false);
+      return;
+    }
+    fetch(`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/stripe-connect/status`)
+      .then((r) => r.json())
+      .then((d) => setStripeConectado(!!d.conectado))
+      .catch(() => setStripeConectado(false));
+  }, [negocioId, negocio?.stripe_connect_id]);
+
   useEffect(() => {
     setHorariosState(buildHorarioState(horarios));
   }, [horarios]);
+
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,7 +176,8 @@ export default function ConfiguracionView({
         throw new Error(err.detail ?? "Error al subir");
       }
       const data = await res.json();
-      setLogoUrl(`${import.meta.env.VITE_API_BASE}${data.url_logo}?t=${Date.now()}`);
+      const logoRaw: string = data.url_logo;
+      setLogoUrl(logoRaw.startsWith("http") ? logoRaw : `${import.meta.env.VITE_API_BASE}${logoRaw}?t=${Date.now()}`);
       onDataChanged?.();
     } catch (err) {
       setLogoError(err instanceof Error ? err.message : "Error al subir el logo");
@@ -218,6 +218,10 @@ export default function ConfiguracionView({
       direccion: direccion,
       giro: giro || undefined,
       color_marca: colorMarca,
+      email_negocio: emailNegocio || undefined,
+      telefono_negocio: telefonoNegocio || undefined,
+      notif_email: emailNotif,
+      notif_whatsapp: whatsappNotif,
     });
     if (ok) {
       setSaved(true);
@@ -229,19 +233,64 @@ export default function ConfiguracionView({
     }
   };
 
-  const handleInvitar = () => {
-    if (invitarEmail.trim()) {
-      setMiembros([
-        ...miembros,
-        {
-          nombre: invitarEmail.split("@")[0],
-          email: invitarEmail,
-          rol: invitarRol,
-          estado: "Activo",
-        },
-      ]);
-      setInvitarEmail("");
-      setShowInvitar(false);
+  // Guardar cuenta bancaria
+  const handleGuardarCuenta = async () => {
+    if (!negocioId) return;
+    setSavingCuenta(true);
+    setCuentaError("");
+    const ok = await onSave({ clabe: clabe.trim(), banco: banco.trim(), titular_cuenta: titularCuenta.trim() });
+    setSavingCuenta(false);
+    if (ok) {
+      setCuentaSaved(true);
+      setTimeout(() => setCuentaSaved(false), 2500);
+    } else {
+      setCuentaError("No se pudo guardar la cuenta. Intenta de nuevo.");
+    }
+  };
+
+  // Stripe Connect onboarding
+  const handleStripeConnect = async () => {
+    if (!negocioId) return;
+    setStripeConnecting(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/stripe-connect/onboard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Error al iniciar Stripe Connect");
+      const data = await res.json();
+      window.location.href = data.url;
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Error al conectar con Stripe");
+      setStripeConnecting(false);
+    }
+  };
+
+  // Eliminar cuenta
+  const [showEliminar, setShowEliminar] = useState(false);
+  const [confirmNombre, setConfirmNombre] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const handleEliminarCuenta = async () => {
+    if (!negocioId) return;
+    setDeletingAccount(true);
+    setDeleteError("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Error al eliminar" }));
+        throw new Error(err.detail ?? "Error al eliminar la cuenta");
+      }
+      localStorage.removeItem("agenda_negocio_id");
+      await signOut();
+      navigate("/", { replace: true });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -409,38 +458,6 @@ export default function ConfiguracionView({
             </div>
           </div>
 
-          {/* Save actions inline */}
-          <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-gray-100">
-            {saved && (
-              <span className="flex items-center gap-1.5 text-sm text-green-600 font-semibold">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                ¡Guardado!
-              </span>
-            )}
-            <button
-              onClick={() => {
-                if (negocio) {
-                  setNombreNegocio(negocio.nombre ?? "");
-                  setDireccion(negocio.direccion ?? "");
-                  setBiografia(negocio.descripcion ?? "");
-                  setGiro(negocio.giro ?? "");
-                  setColorMarca(negocio.color_marca ?? "#16a34a");
-                  setSaveError("");
-                }
-              }}
-              className="border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-xl hover:bg-gray-50 transition-colors text-sm"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleGuardar}
-              className="flex items-center gap-2 bg-green-600 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20"
-            >
-              Guardar Cambios
-            </button>
-          </div>
         </div>
 
         {/* Página Pública */}
@@ -592,35 +609,35 @@ export default function ConfiguracionView({
             {horariosState.map((h, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0"
+                className="py-3 border-b border-gray-50 last:border-0"
               >
-                {/* Día */}
-                <span className="text-sm font-semibold text-gray-700 w-24 shrink-0">
-                  {DIAS_SEMANA[idx]}
-                </span>
+                {/* Fila principal: día + toggle + estado */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-gray-700 w-24 shrink-0">
+                    {DIAS_SEMANA[idx]}
+                  </span>
+                  <Toggle
+                    checked={!h.esta_cerrado}
+                    onChange={() =>
+                      updateDia(idx, {
+                        esta_cerrado: !h.esta_cerrado,
+                        hora_apertura: h.esta_cerrado ? "09:00" : null,
+                        hora_cierre: h.esta_cerrado ? "18:00" : null,
+                      })
+                    }
+                  />
+                  <span
+                    className={`text-xs font-semibold ${
+                      h.esta_cerrado ? "text-gray-400" : "text-green-600"
+                    }`}
+                  >
+                    {h.esta_cerrado ? "Cerrado" : "Abierto"}
+                  </span>
+                </div>
 
-                {/* Toggle abierto/cerrado */}
-                <Toggle
-                  checked={!h.esta_cerrado}
-                  onChange={() =>
-                    updateDia(idx, {
-                      esta_cerrado: !h.esta_cerrado,
-                      hora_apertura: h.esta_cerrado ? "09:00" : null,
-                      hora_cierre: h.esta_cerrado ? "18:00" : null,
-                    })
-                  }
-                />
-                <span
-                  className={`text-xs font-semibold w-16 shrink-0 ${
-                    h.esta_cerrado ? "text-gray-400" : "text-green-600"
-                  }`}
-                >
-                  {h.esta_cerrado ? "Cerrado" : "Abierto"}
-                </span>
-
-                {/* Horas */}
+                {/* Horas — segunda fila en móvil, misma fila en sm+ */}
                 {!h.esta_cerrado && (
-                  <div className="flex items-center gap-2 flex-1">
+                  <div className="flex items-center gap-2 mt-2 sm:mt-0 sm:ml-36">
                     <input
                       type="time"
                       value={h.hora_apertura ?? ""}
@@ -668,35 +685,56 @@ export default function ConfiguracionView({
             </h2>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-gray-50">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">
-                  Notificaciones por Email
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Enviar confirmaciones y recordatorios por correo electrónico.
-                </p>
-              </div>
-              <Toggle
-                checked={emailNotif}
-                onChange={() => setEmailNotif(!emailNotif)}
+          <div className="space-y-5">
+            {/* Email del negocio */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Email del negocio
+              </label>
+              <input
+                type="email"
+                value={emailNegocio}
+                onChange={(e) => setEmailNegocio(e.target.value)}
+                placeholder="tu@correo.com"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
+              <p className="text-xs text-gray-400 mt-1">Recibirás un aviso aquí cada vez que alguien agende una cita.</p>
             </div>
-            <div className="flex items-center justify-between py-3">
+
+            {/* Toggle Email */}
+            <div className="flex items-center justify-between py-3 border-t border-gray-50">
               <div>
-                <p className="text-sm font-semibold text-gray-800">
-                  Alertas de WhatsApp
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Enviar alertas automáticas a clientes a través de WhatsApp
-                  Business API.
-                </p>
+                <p className="text-sm font-semibold text-gray-800">Notificaciones por Email</p>
+                <p className="text-xs text-gray-500 mt-0.5">Confirmaciones al negocio y al cliente por correo.</p>
               </div>
-              <Toggle
-                checked={whatsappNotif}
-                onChange={() => setWhatsappNotif(!whatsappNotif)}
-              />
+              <Toggle checked={emailNotif} onChange={() => setEmailNotif(!emailNotif)} />
+            </div>
+
+            {/* Teléfono WhatsApp */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Teléfono WhatsApp del negocio
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">+52</span>
+                <input
+                  type="tel"
+                  value={telefonoNegocio}
+                  onChange={(e) => setTelefonoNegocio(e.target.value)}
+                  placeholder="2281234567"
+                  className="w-full border border-gray-200 rounded-xl pl-10 pr-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Número registrado en WhatsApp Business.</p>
+            </div>
+
+            {/* Toggle WhatsApp */}
+            <div className="flex items-center justify-between py-3 border-t border-gray-50">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Alertas de WhatsApp</p>
+                <p className="text-xs text-gray-500 mt-0.5">Requiere cuenta WhatsApp Business conectada a Brevo.</p>
+              </div>
+              <Toggle checked={whatsappNotif} onChange={() => setWhatsappNotif(!whatsappNotif)} />
             </div>
           </div>
         </div>
@@ -765,296 +803,237 @@ export default function ConfiguracionView({
         </div>
 
         {/* Pagos y Facturación */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center gap-2 mb-5">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6">
+          <div className="flex items-center gap-2">
             <div className="h-8 w-8 bg-green-100 rounded-xl flex items-center justify-center">
-              <svg
-                className="w-4 h-4 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                />
+              <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
               </svg>
             </div>
-            <h2 className="text-base font-bold text-gray-900">
-              Pagos y Facturación
-            </h2>
+            <h2 className="text-base font-bold text-gray-900">Pagos y Facturación</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Stripe Connect */}
-            <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/50">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-gray-700"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
-                    />
-                  </svg>
-                  <span className="text-sm font-bold text-gray-800">
-                    Stripe Connect
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full border border-gray-200 uppercase tracking-wide">
-                  No configurado
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                Recibe pagos con tarjeta de crédito de forma segura y
-                automática.
-              </p>
-              <button className="text-xs text-green-600 font-semibold hover:underline">
-                Configurar Webhooks
-              </button>
+          {/* Cuenta bancaria / CLABE */}
+          <div className="border border-gray-100 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2 mb-1">
+              <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+              </svg>
+              <span className="text-sm font-bold text-gray-800">Cuenta Bancaria (CLABE)</span>
             </div>
-
-            {/* Cuenta Bancaria */}
-            <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <svg
-                  className="w-5 h-5 text-gray-700"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"
-                  />
-                </svg>
-                <span className="text-sm font-bold text-gray-800">
-                  Cuenta Bancaria
-                </span>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Tus clientes podrán ver estos datos para hacer transferencias de anticipo.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">CLABE Interbancaria (18 dígitos)</label>
+                <input
+                  type="text"
+                  maxLength={18}
+                  value={clabe}
+                  onChange={(e) => setClabe(e.target.value.replace(/\D/g, ""))}
+                  placeholder="000000000000000000"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 font-mono"
+                />
               </div>
-              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                Agrega tu cuenta bancaria para recibir transferencias de los anticipos cobrados.
-              </p>
-              <button className="text-xs text-green-600 font-semibold hover:underline">
-                Agregar cuenta bancaria
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Miembros del Equipo */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 bg-green-100 rounded-xl flex items-center justify-center">
-                <svg
-                  className="w-4 h-4 text-green-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Banco</label>
+                <input
+                  type="text"
+                  value={banco}
+                  onChange={(e) => setBanco(e.target.value)}
+                  placeholder="Ej. BBVA, Banamex, HSBC"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
               </div>
-              <h2 className="text-base font-bold text-gray-900">
-                Miembros del Equipo
-              </h2>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Titular de la cuenta</label>
+                <input
+                  type="text"
+                  value={titularCuenta}
+                  onChange={(e) => setTitularCuenta(e.target.value)}
+                  placeholder="Nombre completo o razón social"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
             </div>
+            {cuentaError && <p className="text-xs text-red-500">{cuentaError}</p>}
             <button
-              onClick={() => setShowInvitar(true)}
-              className="flex items-center gap-1.5 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
+              onClick={handleGuardarCuenta}
+              disabled={savingCuenta}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Invitar Miembro
+              {savingCuenta ? (
+                <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Guardando...</>
+              ) : cuentaSaved ? (
+                <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Guardado</>
+              ) : "Guardar cuenta bancaria"}
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {["Nombre", "Rol", "Estado", "Acciones"].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider pb-3 pr-6"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {miembros.map((m, i) => (
-                  <tr key={i} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="py-3.5 pr-6">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar nombre={m.nombre} />
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800">
-                            {m.nombre}
-                          </p>
-                          <p className="text-xs text-gray-400">{m.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 pr-6">
-                      <span className="text-sm text-gray-600">{m.rol}</span>
-                    </td>
-                    <td className="py-3.5 pr-6">
-                      <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                          m.estado === "Activo"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {m.estado}
-                      </span>
-                    </td>
-                    <td className="py-3.5">
-                      <button className="text-gray-400 hover:text-gray-700 transition-colors">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                          />
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Stripe Connect */}
+          <div className="border border-gray-100 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <span className="text-sm font-bold text-gray-800">Stripe Connect</span>
+              </div>
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wide ${
+                stripeConectado
+                  ? "bg-green-100 text-green-700 border-green-200"
+                  : "bg-gray-100 text-gray-500 border-gray-200"
+              }`}>
+                {stripeConectado ? "Conectado" : "No configurado"}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+              Conecta tu cuenta de Stripe para recibir pagos con tarjeta directamente en tu negocio. Stripe deposita en tu cuenta bancaria automáticamente.
+            </p>
+            <button
+              onClick={handleStripeConnect}
+              disabled={stripeConnecting}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {stripeConnecting ? (
+                <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Conectando...</>
+              ) : stripeConectado ? "Gestionar cuenta Stripe" : "Conectar con Stripe"}
+            </button>
+          </div>
+        </div>
+
+        {/* Zona de Riesgo */}
+        <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 bg-red-100 rounded-xl flex items-center justify-center">
+              <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Zona de Riesgo</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Las acciones de esta sección son permanentes e irreversibles.
+          </p>
+          <div className="flex items-center justify-between p-4 border border-red-100 rounded-xl bg-red-50/50">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Eliminar cuenta</p>
+              <p className="text-xs text-gray-500 mt-0.5">Elimina tu negocio, citas, servicios y todos los datos de forma permanente.</p>
+            </div>
+            <button
+              onClick={() => { setShowEliminar(true); setConfirmNombre(""); setDeleteError(""); }}
+              className="shrink-0 ml-4 border border-red-200 text-red-600 font-semibold px-4 py-2 rounded-xl hover:bg-red-50 transition-colors text-sm"
+            >
+              Eliminar cuenta
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Modal Invitar Miembro */}
-      {showInvitar && (
+      {/* Modal Eliminar Cuenta */}
+      {showEliminar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="h-9 w-9 bg-green-100 rounded-xl flex items-center justify-center">
-                  <svg
-                    className="w-5 h-5 text-green-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-                    />
+                <div className="h-9 w-9 bg-red-100 rounded-xl flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  Invitar Miembro
-                </h2>
+                <h2 className="text-lg font-bold text-gray-900">Eliminar cuenta</h2>
               </div>
               <button
-                onClick={() => setShowInvitar(false)}
+                onClick={() => setShowEliminar(false)}
                 className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             <div className="p-6 space-y-4">
+              <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                <p className="text-sm text-red-700 font-medium">Esta acción eliminará permanentemente:</p>
+                <ul className="mt-2 space-y-1 text-xs text-red-600 list-disc list-inside">
+                  <li>Tu negocio y todos sus datos</li>
+                  <li>Historial de citas y clientes</li>
+                  <li>Servicios y horarios configurados</li>
+                  <li>Tu página pública de reservas</li>
+                </ul>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                  Correo electrónico
+                  Escribe <span className="text-gray-900 font-bold">"{negocio?.nombre}"</span> para confirmar
                 </label>
                 <input
-                  type="email"
-                  value={invitarEmail}
-                  onChange={(e) => setInvitarEmail(e.target.value)}
-                  placeholder="nombre@empresa.com"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  type="text"
+                  value={confirmNombre}
+                  onChange={(e) => setConfirmNombre(e.target.value)}
+                  placeholder={negocio?.nombre ?? "Nombre del negocio"}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                  Rol
-                </label>
-                <select
-                  value={invitarRol}
-                  onChange={(e) => setInvitarRol(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option>Administrador</option>
-                  <option>Especialista</option>
-                  <option>Recepcionista</option>
-                  <option>Solo lectura</option>
-                </select>
-              </div>
+
+              {deleteError && (
+                <p className="text-sm text-red-600 font-medium">{deleteError}</p>
+              )}
             </div>
 
             <div className="flex gap-3 p-6 pt-0">
               <button
-                onClick={() => setShowInvitar(false)}
+                onClick={() => setShowEliminar(false)}
                 className="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors text-sm"
               >
                 Cancelar
               </button>
               <button
-                onClick={handleInvitar}
-                className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-colors text-sm shadow-lg shadow-green-600/20"
+                onClick={handleEliminarCuenta}
+                disabled={confirmNombre !== negocio?.nombre || deletingAccount}
+                className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Enviar Invitación
+                {deletingAccount ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  "Eliminar permanentemente"
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Botón flotante Guardar Cambios */}
+      <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+        {saved && (
+          <span className="flex items-center gap-1.5 bg-white border border-green-200 text-green-600 text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            ¡Guardado!
+          </span>
+        )}
+        {saveError && (
+          <span className="bg-white border border-red-200 text-red-500 text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg">
+            {saveError}
+          </span>
+        )}
+        <button
+          onClick={handleGuardar}
+          className="flex items-center gap-2 bg-green-600 text-white px-5 py-3 rounded-xl text-sm font-bold hover:bg-green-700 active:scale-95 transition-all shadow-xl shadow-green-600/30"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          Guardar Cambios
+        </button>
+      </div>
     </div>
   );
 }

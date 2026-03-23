@@ -288,6 +288,39 @@ export default function Onboarding() {
                 Tratamientos faciales y corporales.
               </p>
             </div>
+
+            {/* Opcion 4: Estudio Musical */}
+            <div
+              onClick={() => setSelectedType("estudio_musical")}
+              className={`group relative rounded-2xl border-2 p-2 cursor-pointer transition-all ${selectedType === "estudio_musical" ? "border-brand-600 shadow-md bg-brand-50/30" : "border-gray-200 bg-white hover:border-brand-300"}`}
+            >
+              {selectedType === "estudio_musical" && (
+                <div className="absolute top-4 right-4 z-10 rounded-full bg-brand-600 p-1 shadow-sm">
+                  <svg
+                    className="h-3 w-3 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={3}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+              )}
+              <div className="aspect-[4/3] rounded-xl bg-gray-100 mb-4 overflow-hidden">
+                <div className="w-full h-full bg-[#1a1a2e] flex items-center justify-center text-4xl">
+                  🎵
+                </div>
+              </div>
+              <h3 className="font-bold text-gray-900 px-2">Estudio Musical</h3>
+              <p className="text-xs text-gray-500 px-2 pb-2">
+                Clases, grabación y ensayos musicales.
+              </p>
+            </div>
           </div>
         </div>
 

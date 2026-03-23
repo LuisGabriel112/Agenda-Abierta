@@ -52,6 +52,16 @@ export interface CitaItem {
   hora_fin: string;
   estado: string;
   monto_anticipo: string;
+  metodo_pago?: string | null;
+  pagado: boolean;
+}
+
+export interface EmpleadoData {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: "ADMIN" | "STAFF";
+  activo: boolean;
 }
 
 export interface AnaliticaData {
@@ -264,6 +274,48 @@ export function useApi(negocioId: string | null) {
     [negocioId],
   );
 
+  // ── Empleados ─────────────────────────────────────────────────────────────
+
+  const getEmpleados = useCallback((): Promise<EmpleadoData[]> => {
+    if (!negocioId) return Promise.resolve([]);
+    return req(`/api/negocio/${negocioId}/empleados`);
+  }, [negocioId]);
+
+  const createEmpleado = useCallback(
+    (body: { nombre: string; email: string; rol: string }): Promise<EmpleadoData> => {
+      if (!negocioId) return Promise.reject(new Error("Sin negocio"));
+      return req(`/api/negocio/${negocioId}/empleados`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+    [negocioId],
+  );
+
+  const updateEmpleado = useCallback(
+    (
+      empleadoId: string,
+      body: Partial<{ nombre: string; email: string; rol: string; activo: boolean }>,
+    ): Promise<EmpleadoData> => {
+      if (!negocioId) return Promise.reject(new Error("Sin negocio"));
+      return req(`/api/negocio/${negocioId}/empleados/${empleadoId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+    },
+    [negocioId],
+  );
+
+  const deleteEmpleado = useCallback(
+    (empleadoId: string): Promise<void> => {
+      if (!negocioId) return Promise.reject(new Error("Sin negocio"));
+      return req(`/api/negocio/${negocioId}/empleados/${empleadoId}`, {
+        method: "DELETE",
+      });
+    },
+    [negocioId],
+  );
+
   // ── Analítica ─────────────────────────────────────────────────────────────
 
   const getAnalitica = useCallback((): Promise<AnaliticaData> => {
@@ -292,6 +344,11 @@ export function useApi(negocioId: string | null) {
     deleteCita,
     // Horarios
     updateHorarios,
+    // Empleados
+    getEmpleados,
+    createEmpleado,
+    updateEmpleado,
+    deleteEmpleado,
     // Analítica
     getAnalitica,
   };

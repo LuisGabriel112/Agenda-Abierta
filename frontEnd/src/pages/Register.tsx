@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/react";
 
 export default function Register() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   // Recibimos los datos del plan y de la configuración desde el Checkout
   const {
@@ -13,6 +13,8 @@ export default function Register() {
     isAnnual,
     total,
     paymentMethodId,
+    stripeCustomerId,
+    stripeSubscriptionId,
     businessName,
     selectedType,
     services,
@@ -22,6 +24,8 @@ export default function Register() {
     isAnnual: false,
     total: "0.00",
     paymentMethodId: "mock_pm_123",
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
     businessName: "",
     selectedType: "",
     services: [],
@@ -36,24 +40,34 @@ export default function Register() {
   });
   const [error, setError] = useState("");
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Si el usuario ya está autenticado con Clerk (flujo OAuth), registrar automáticamente
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    registerUser({
+      name: user.fullName ?? user.firstName ?? "Usuario",
+      email: user.primaryEmailAddress?.emailAddress ?? "",
+      password: "",
+    });
+  }, [isLoaded, user]);
+
+  const registerUser = async (data: { name: string; email: string; password: string }) => {
     setIsLoading(true);
     setError("");
 
     try {
-      // 1. Enviamos todos los datos al Backend
       const response = await fetch(`${import.meta.env.VITE_API_BASE}/api/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
+          name: data.name,
+          email: data.email,
+          password: data.password,
           plan: plan,
           isAnnual: isAnnual,
           total: total,
           paymentMethodId: paymentMethodId,
+          stripeCustomerId: stripeCustomerId ?? null,
+          stripeSubscriptionId: stripeSubscriptionId ?? null,
           businessName: businessName,
           selectedType: selectedType,
           services: services,
@@ -62,26 +76,54 @@ export default function Register() {
         }),
       });
 
-      const data = await response.json();
+      const responseData = await response.json();
       if (!response.ok) {
-        throw new Error(data.detail || "Error al procesar el pago y registro");
+        throw new Error(responseData.detail || "Error al procesar el pago y registro");
       }
 
-      // 2. Si es exitoso, nos devuelve el JWT (Iniciamos sesión)
-      localStorage.setItem("agenda_token", data.token);
-      localStorage.setItem("agenda_user_name", formData.name);
+      if (responseData.negocio_id) {
+        localStorage.setItem("agenda_negocio_id", responseData.negocio_id);
+      }
 
-      // 3. Redirigimos a la pantalla de Éxito
-      navigate("/success");
+      navigate("/success", { replace: true });
     } catch (err) {
-      // Si falla, redirigimos a la pantalla de Pago Rechazado pasando el error
       const errorMessage =
         err instanceof Error ? err.message : "Error desconocido";
-      navigate("/payment-failed", { state: { error: errorMessage } });
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await registerUser(formData);
+  };
+
+  // Flujo OAuth (Clerk): mostrar pantalla de carga o error, no el formulario manual
+  if (!isLoaded || user) {
+    if (error) {
+      return (
+        <div className="min-h-screen bg-[#f9fafb] font-sans flex flex-col items-center justify-center gap-4 p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 max-w-sm w-full text-center">
+            <p className="text-red-600 font-semibold mb-4">{error}</p>
+            <button
+              onClick={() => navigate("/complete-profile")}
+              className="text-sm text-green-600 font-semibold hover:underline"
+            >
+              Volver e intentar de nuevo
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-screen bg-[#f9fafb] font-sans flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-600 font-medium">Activando tu agenda...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f9fafb] font-sans flex flex-col justify-center py-12 sm:px-6 lg:px-8">
