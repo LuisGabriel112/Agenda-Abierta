@@ -33,7 +33,7 @@ function BarChart({ data }: { data: { mes: string; total: number }[] }) {
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
-            className="flex-1 bg-gray-100 rounded-sm"
+            className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-sm"
             style={{ height: "8px" }}
           />
         ))}
@@ -62,7 +62,6 @@ function LineChart({ data }: { data: { mes: string; total: number }[] }) {
   const PAD = 20;
 
   if (data.length < 2) {
-    // flat line placeholder
     return (
       <svg
         viewBox={`0 0 ${W} ${H + 30}`}
@@ -90,13 +89,11 @@ function LineChart({ data }: { data: { mes: string; total: number }[] }) {
     .join(" ");
   const areaD = `${pathD} L${xs[xs.length - 1].toFixed(1)},${H - PAD} L${xs[0].toFixed(1)},${H - PAD} Z`;
 
-  // find peak index
   const peakIdx = data.reduce(
     (best, d, i) => (d.total > data[best].total ? i : best),
     0,
   );
 
-  // x-axis labels — show up to 5 evenly spaced
   const labelIndices =
     data.length <= 5
       ? data.map((_, i) => i)
@@ -168,9 +165,9 @@ function StatCard({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-gray-600">{label}</p>
+        <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">{label}</p>
         {change && (
           <span className="flex items-center gap-1 text-xs font-bold text-green-600">
             <svg
@@ -190,7 +187,7 @@ function StatCard({
           </span>
         )}
       </div>
-      <p className="text-3xl font-extrabold text-gray-900 mb-3">{value}</p>
+      <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mb-3">{value}</p>
       {children}
     </div>
   );
@@ -198,24 +195,41 @@ function StatCard({
 
 function LoadingSkeleton() {
   return (
-    <div className="flex-1 overflow-y-auto p-6 lg:p-8 bg-gray-50 space-y-6">
-      <div className="h-8 bg-gray-200 rounded-xl w-48 animate-pulse" />
+    <div className="flex-1 overflow-y-auto p-6 lg:p-8 bg-gray-50 dark:bg-gray-950 space-y-6">
+      <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded-xl w-48 animate-pulse" />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 h-36 animate-pulse"
+            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-5 h-36 animate-pulse"
           >
-            <div className="h-4 bg-gray-100 rounded w-3/4 mb-4" />
-            <div className="h-8 bg-gray-100 rounded w-1/2 mb-3" />
-            <div className="h-8 bg-gray-100 rounded" />
+            <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-4" />
+            <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded w-1/2 mb-3" />
+            <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded" />
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 h-64 animate-pulse" />
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 h-48 animate-pulse" />
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 h-64 animate-pulse" />
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 h-48 animate-pulse" />
     </div>
   );
+}
+
+function exportToCSV(filename: string, headers: string[], rows: string[][]) {
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const lines = [
+    headers.map(escape).join(","),
+    ...rows.map((row) => row.map(escape).join(",")),
+  ];
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function AnaliticaView() {
@@ -226,6 +240,8 @@ export default function AnaliticaView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [periodo, setPeriodo] = useState("Todo");
+  const [exportingCitas, setExportingCitas] = useState(false);
+  const [exportingClientes, setExportingClientes] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!negocioId) {
@@ -248,11 +264,54 @@ export default function AnaliticaView() {
     fetchData();
   }, [fetchData]);
 
+  const handleExportarCitas = async () => {
+    setExportingCitas(true);
+    try {
+      const citas = await api.getCitas();
+      const headers = ["Cliente", "Teléfono", "Servicio", "Empleado", "Fecha Inicio", "Fecha Fin", "Estado", "Anticipo", "Método de Pago", "Pagado"];
+      const rows = citas.map((c) => [
+        c.cliente_nombre,
+        c.cliente_telefono,
+        c.servicio_nombre,
+        c.empleado_nombre,
+        new Date(c.hora_inicio).toLocaleString("es-MX"),
+        new Date(c.hora_fin).toLocaleString("es-MX"),
+        c.estado,
+        c.monto_anticipo,
+        c.metodo_pago ?? "",
+        c.pagado ? "Sí" : "No",
+      ]);
+      const fecha = new Date().toISOString().slice(0, 10);
+      exportToCSV(`citas_${fecha}.csv`, headers, rows);
+    } finally {
+      setExportingCitas(false);
+    }
+  };
+
+  const handleExportarClientes = async () => {
+    setExportingClientes(true);
+    try {
+      const clientes = await api.getClientes();
+      const headers = ["Nombre", "Teléfono", "Email", "Total Citas", "Total Gastado"];
+      const rows = clientes.map((c) => [
+        c.nombre,
+        c.telefono,
+        c.email ?? "",
+        String(c.total_citas),
+        c.total_gastado,
+      ]);
+      const fecha = new Date().toISOString().slice(0, 10);
+      exportToCSV(`clientes_${fecha}.csv`, headers, rows);
+    } finally {
+      setExportingClientes(false);
+    }
+  };
+
   if (loading) return <LoadingSkeleton />;
 
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
           <p className="text-red-500 text-sm font-medium mb-3">{error}</p>
           <button
@@ -268,7 +327,6 @@ export default function AnaliticaView() {
 
   if (!data) return null;
 
-  // Filter citas_por_mes based on selected period
   const filteredMeses = (() => {
     const all = data.citas_por_mes;
     if (periodo === "30 Días") return all.slice(-1);
@@ -282,42 +340,73 @@ export default function AnaliticaView() {
     parseFloat(data.ingresos_totales.replace(/[$,]/g, "")) === 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 lg:p-8 bg-gray-50">
+    <div className="flex-1 overflow-y-auto p-6 lg:p-8 bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analítica</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Analítica</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             Monitorea el desempeño y crecimiento de tu negocio.
           </p>
         </div>
-        <button
-          onClick={fetchData}
-          className="flex items-center gap-1.5 border border-gray-200 text-gray-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportarClientes}
+            disabled={exportingClientes || data.total_clientes === 0}
+            title="Exportar clientes a CSV"
+            className="flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-40"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Actualizar
-        </button>
+            {exportingClientes ? (
+              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            Clientes
+          </button>
+          <button
+            onClick={handleExportarCitas}
+            disabled={exportingCitas || data.total_citas === 0}
+            title="Exportar citas a CSV"
+            className="flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-40"
+          >
+            {exportingCitas ? (
+              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            Citas
+          </button>
+          <button
+            onClick={fetchData}
+            className="flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {isEmpty ? (
-        /* Empty state */
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-8 h-8 text-gray-300"
+              className="w-8 h-8 text-gray-300 dark:text-gray-600"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -330,10 +419,10 @@ export default function AnaliticaView() {
               />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-gray-800 mb-2">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">
             Sin datos todavía
           </h2>
-          <p className="text-sm text-gray-500 max-w-sm mx-auto">
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
             Una vez que registres clientes y citas completadas, aquí verás tus
             métricas de negocio.
           </p>
@@ -375,7 +464,7 @@ export default function AnaliticaView() {
               label="Clientes Registrados"
               value={String(data.total_clientes)}
             >
-              <div className="w-full bg-gray-100 rounded-full h-2.5 mb-1">
+              <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2.5 mb-1">
                 <div
                   className="bg-green-600 h-2.5 rounded-full transition-all"
                   style={{
@@ -383,32 +472,32 @@ export default function AnaliticaView() {
                   }}
                 />
               </div>
-              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wide">
                 Total acumulado
               </p>
             </StatCard>
           </div>
 
           {/* Tendencias de Citas */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
             <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
               <div>
-                <h2 className="text-base font-bold text-gray-900">
+                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
                   Tendencias de Citas
                 </h2>
-                <p className="text-sm text-gray-600 font-semibold mt-0.5">
+                <p className="text-sm text-gray-600 dark:text-gray-400 font-semibold mt-0.5">
                   {data.total_citas} citas en total
                 </p>
               </div>
-              <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+              <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1">
                 {["30 Días", "90 Días", "Todo"].map((p) => (
                   <button
                     key={p}
                     onClick={() => setPeriodo(p)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                       periodo === p
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700"
+                        ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                     }`}
                   >
                     {p}
@@ -417,7 +506,7 @@ export default function AnaliticaView() {
               </div>
             </div>
             {filteredMeses.length === 0 ? (
-              <div className="h-40 flex items-center justify-center text-gray-400 text-sm">
+              <div className="h-40 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
                 Sin datos para este período
               </div>
             ) : (
@@ -426,22 +515,22 @@ export default function AnaliticaView() {
           </div>
 
           {/* Transacciones Recientes */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-bold text-gray-900">
+              <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
                 Transacciones Recientes
               </h2>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 Últimas {data.transacciones_recientes.length} completadas
               </span>
             </div>
 
             {data.transacciones_recientes.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-400 dark:text-gray-500">
                   No hay transacciones completadas aún.
                 </p>
-                <p className="text-xs text-gray-300 mt-1">
+                <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">
                   Las citas marcadas como "Completada" aparecerán aquí.
                 </p>
               </div>
@@ -449,43 +538,43 @@ export default function AnaliticaView() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-100">
+                    <tr className="border-b border-gray-100 dark:border-gray-800">
                       {["Cliente", "Servicio", "Fecha", "Monto"].map((h) => (
                         <th
                           key={h}
-                          className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider pb-3 pr-6"
+                          className="text-left text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider pb-3 pr-6"
                         >
                           {h}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                     {data.transacciones_recientes.map((t, i) => (
                       <tr
                         key={i}
-                        className="hover:bg-gray-50/60 transition-colors"
+                        className="hover:bg-gray-50/60 dark:hover:bg-gray-800/50 transition-colors"
                       >
                         <td className="py-3.5 pr-6">
                           <div className="flex items-center gap-2.5">
                             <Avatar nombre={t.cliente_nombre} />
-                            <span className="text-sm font-semibold text-gray-800">
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                               {t.cliente_nombre}
                             </span>
                           </div>
                         </td>
                         <td className="py-3.5 pr-6">
-                          <span className="text-sm text-gray-600">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
                             {t.servicio_nombre}
                           </span>
                         </td>
                         <td className="py-3.5 pr-6">
-                          <span className="text-sm text-gray-500">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
                             {t.fecha}
                           </span>
                         </td>
                         <td className="py-3.5">
-                          <span className="text-sm font-bold text-gray-900">
+                          <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
                             {t.monto}
                           </span>
                         </td>

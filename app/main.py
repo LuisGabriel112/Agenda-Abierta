@@ -21,6 +21,7 @@ from typing import Dict, List, Optional
 
 import stripe
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -101,7 +102,7 @@ def _job_recordatorios():
 
 
 _scheduler = BackgroundScheduler()
-_scheduler.add_job(_job_recordatorios, "interval", hours=5, id="recordatorios")
+_scheduler.add_job(_job_recordatorios, "interval", hours=1, id="recordatorios")
 
 
 @app.on_event("startup")
@@ -242,6 +243,9 @@ class NegocioUpdateRequest(BaseModel):
     clabe: Optional[str] = None
     banco: Optional[str] = None
     titular_cuenta: Optional[str] = None
+    cancelacion_horas: Optional[int] = None
+    terminos_reembolso: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class NegocioResponse(BaseModel):
@@ -262,6 +266,9 @@ class NegocioResponse(BaseModel):
     banco: Optional[str] = None
     titular_cuenta: Optional[str] = None
     stripe_connect_id: Optional[str] = None
+    cancelacion_horas: Optional[int] = None
+    terminos_reembolso: Optional[str] = None
+    timezone: str = "America/Mexico_City"
 
 
 class ServicioSchema(BaseModel):
@@ -362,6 +369,7 @@ class CitaCreateRequest(BaseModel):
     cliente_id: str
     servicio_id: str
     hora_inicio: str  # ISO 8601 e.g. "2025-07-15T10:00:00"
+    empleado_id: Optional[str] = None
     notas: Optional[str] = None
 
 
@@ -379,6 +387,7 @@ class CitaItem(BaseModel):
     servicio_id: str
     servicio_nombre: str
     servicio_duracion_minutos: int
+    empleado_id: Optional[str] = None
     empleado_nombre: str
     hora_inicio: str
     hora_fin: str
@@ -480,6 +489,8 @@ async def get_me(clerk_user_id: str, db: Session = Depends(get_db)):
         "rol": empleado.rol,
         "negocio_nombre": negocio.nombre,
         "negocio_giro": negocio.giro,
+        "tiene_suscripcion": bool(negocio.stripe_subscription_id),
+        "negocio_activo": negocio.activo,
     }
 
 
@@ -517,6 +528,9 @@ async def get_negocio(negocio_id: str, db: Session = Depends(get_db)):
             banco=negocio.banco,
             titular_cuenta=negocio.titular_cuenta,
             stripe_connect_id=negocio.stripe_connect_id,
+            cancelacion_horas=negocio.cancelacion_horas,
+            terminos_reembolso=negocio.terminos_reembolso,
+            timezone=negocio.timezone or "America/Mexico_City",
         ),
         servicios=[
             ServicioSchema(
@@ -671,6 +685,11 @@ class EmpleadoItem(BaseModel):
     email: str
     rol: str
     activo: bool
+    servicios: List[str] = []  # IDs de servicios asignados
+
+
+class EmpleadoServiciosRequest(BaseModel):
+    servicios_ids: List[str]
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +708,7 @@ async def list_empleados(negocio_id: str, db: Session = Depends(get_db)):
             email=e.email,
             rol=e.rol.value,
             activo=e.activo,
+            servicios=[str(s.id) for s in e.servicios],
         )
         for e in empleados
     ]
@@ -751,6 +771,37 @@ async def update_empleado(
         email=emp.email,
         rol=emp.rol.value,
         activo=emp.activo,
+    )
+
+
+@app.put("/api/negocio/{negocio_id}/empleados/{empleado_id}/servicios", response_model=EmpleadoItem)
+async def update_empleado_servicios(
+    negocio_id: str,
+    empleado_id: str,
+    body: EmpleadoServiciosRequest,
+    db: Session = Depends(get_db),
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    eid = _parse_uuid(empleado_id, "ID de empleado")
+    emp = db.query(Empleado).filter(Empleado.id == eid, Empleado.negocio_id == nid).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado.")
+    ids_parsed = [_parse_uuid(sid, "ID de servicio") for sid in body.servicios_ids]
+    servicios = (
+        db.query(Servicio)
+        .filter(Servicio.id.in_(ids_parsed), Servicio.negocio_id == nid)
+        .all()
+    )
+    emp.servicios = servicios
+    db.commit()
+    db.refresh(emp)
+    return EmpleadoItem(
+        id=str(emp.id),
+        nombre=emp.nombre,
+        email=emp.email,
+        rol=emp.rol.value,
+        activo=emp.activo,
+        servicios=[str(s.id) for s in emp.servicios],
     )
 
 
@@ -1009,9 +1060,10 @@ def _cita_to_item(x: Cita) -> CitaItem:
         servicio_id=str(x.servicio_id),
         servicio_nombre=x.servicio.nombre if x.servicio else "—",
         servicio_duracion_minutos=x.servicio.duracion_minutos if x.servicio else 0,
+        empleado_id=str(x.empleado_id) if x.empleado_id else None,
         empleado_nombre=x.empleado.nombre if x.empleado else "—",
-        hora_inicio=x.hora_inicio.isoformat(),
-        hora_fin=x.hora_fin.isoformat(),
+        hora_inicio=x.hora_inicio.strftime("%Y-%m-%dT%H:%M:%S"),
+        hora_fin=x.hora_fin.strftime("%Y-%m-%dT%H:%M:%S"),
         estado=x.estado.value,
         monto_anticipo=f"${x.monto_anticipo or 0:,.2f}",
         metodo_pago=x.metodo_pago,
@@ -1031,14 +1083,20 @@ async def list_citas(
 
     if fecha_inicio:
         try:
+            from datetime import timezone as _tz
             fi = datetime.fromisoformat(fecha_inicio)
+            if fi.tzinfo is None:
+                fi = fi.replace(tzinfo=_tz.utc)
             q = q.filter(Cita.hora_inicio >= fi)
         except ValueError:
             raise HTTPException(status_code=400, detail="fecha_inicio inválida.")
 
     if fecha_fin:
         try:
+            from datetime import timezone as _tz
             ff = datetime.fromisoformat(fecha_fin)
+            if ff.tzinfo is None:
+                ff = ff.replace(tzinfo=_tz.utc)
             q = q.filter(Cita.hora_inicio <= ff)
         except ValueError:
             raise HTTPException(status_code=400, detail="fecha_fin inválida.")
@@ -1075,12 +1133,22 @@ async def create_cita(
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado.")
 
-    # Usar el primer empleado ADMIN del negocio
-    empleado = (
-        db.query(Empleado)
-        .filter(Empleado.negocio_id == nid, Empleado.activo == True)
-        .first()
-    )
+    # Usar el empleado indicado, o el primer activo como fallback
+    if body.empleado_id:
+        eid = _parse_uuid(body.empleado_id, "ID de empleado")
+        empleado = (
+            db.query(Empleado)
+            .filter(Empleado.id == eid, Empleado.negocio_id == nid, Empleado.activo == True)
+            .first()
+        )
+        if not empleado:
+            raise HTTPException(status_code=404, detail="Empleado no encontrado.")
+    else:
+        empleado = (
+            db.query(Empleado)
+            .filter(Empleado.negocio_id == nid, Empleado.activo == True)
+            .first()
+        )
     if not empleado:
         raise HTTPException(
             status_code=400, detail="No hay empleados activos en el negocio."
@@ -1159,6 +1227,76 @@ async def delete_cita(negocio_id: str, cita_id: str, db: Session = Depends(get_d
     db.delete(cita)
     db.commit()
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Rutas — iCal feed
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/negocio/{negocio_id}/calendar.ics")
+async def get_ical(negocio_id: str, db: Session = Depends(get_db)):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+
+    hace_30_dias = datetime.utcnow() - timedelta(days=30)
+    citas = (
+        db.query(Cita)
+        .filter(
+            Cita.negocio_id == nid,
+            Cita.estado != EstadoCita.CANCELADA,
+            Cita.hora_inicio >= hace_30_dias,
+        )
+        .all()
+    )
+
+    def fmt(dt: datetime) -> str:
+        return dt.strftime("%Y%m%dT%H%M%S")
+
+    def ical_escape(text: str) -> str:
+        return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AgendaAbierta//ES",
+        f"X-WR-CALNAME:{ical_escape(negocio.nombre)}",
+        f"X-WR-TIMEZONE:{negocio.timezone}",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+
+    for cita in citas:
+        cliente_nombre = cita.cliente.nombre if cita.cliente else "Cliente"
+        servicio_nombre = cita.servicio.nombre if cita.servicio else "Cita"
+        empleado_nombre = cita.empleado.nombre if cita.empleado else ""
+        estado_ical = "CONFIRMED" if cita.estado == EstadoCita.CONFIRMADA else "TENTATIVE"
+        descripcion = f"Cliente: {cliente_nombre}"
+        if empleado_nombre:
+            descripcion += f"\\nEmpleado: {empleado_nombre}"
+
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{cita.id}@agendaabierta",
+            f"DTSTAMP:{fmt(datetime.utcnow())}Z",
+            f"DTSTART:{fmt(cita.hora_inicio)}",
+            f"DTEND:{fmt(cita.hora_fin)}",
+            f"SUMMARY:{ical_escape(servicio_nombre)} — {ical_escape(cliente_nombre)}",
+            f"DESCRIPTION:{descripcion}",
+            f"STATUS:{estado_ical}",
+            "END:VEVENT",
+        ]
+
+    lines.append("END:VCALENDAR")
+    content = "\r\n".join(lines)
+
+    return Response(
+        content=content,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="agenda_{negocio.slug}.ics"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1278,6 +1416,31 @@ async def create_subscription(body: CreateSubscriptionRequest):
 # ---------------------------------------------------------------------------
 
 
+@app.post("/api/reactivar-suscripcion")
+async def reactivar_suscripcion(body: dict, db: Session = Depends(get_db)):
+    clerk_user_id = body.get("clerk_user_id")
+    subscription_id = body.get("stripe_subscription_id")
+    customer_id = body.get("stripe_customer_id")
+
+    if not clerk_user_id or not subscription_id:
+        raise HTTPException(status_code=400, detail="Faltan datos requeridos.")
+
+    empleado = db.query(Empleado).filter(Empleado.clerk_user_id == clerk_user_id).first()
+    if not empleado:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    negocio = db.query(Negocio).filter(Negocio.id == empleado.negocio_id).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+
+    negocio.stripe_subscription_id = subscription_id
+    if customer_id:
+        negocio.stripe_customer_id = customer_id
+    negocio.activo = True
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/api/cancel-subscription")
 async def cancel_subscription(body: dict):
     subscription_id = body.get("subscription_id")
@@ -1383,6 +1546,27 @@ def admin_toggle_activo(
     negocio.activo = not negocio.activo
     db.commit()
     return {"activo": negocio.activo}
+
+
+@app.post("/api/admin/negocio/{negocio_id}/cancel-subscription")
+def admin_cancel_subscription(
+    negocio_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_admin),
+):
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+    if not negocio.stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="El negocio no tiene suscripción activa.")
+    try:
+        stripe.Subscription.cancel(negocio.stripe_subscription_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al cancelar en Stripe: {e}")
+    negocio.stripe_subscription_id = None
+    db.commit()
+    return {"ok": True}
 
 
 @app.get("/api/debug-env")
@@ -1525,6 +1709,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 cita = db.query(Cita).filter(Cita.id == cita_id).first()
                 if cita:
                     cita.pagado = True
+                    amount_total = session_obj.get("amount_total") or 0
+                    if amount_total:
+                        cita.monto_anticipo = Decimal(str(amount_total)) / 100
                     if cita.estado == EstadoCita.PENDIENTE:
                         cita.estado = EstadoCita.CONFIRMADA
                     db.commit()
@@ -1686,6 +1873,9 @@ class NegocioPublicoResponse(BaseModel):
     servicios: List[ServicioPublico]
     empleados: List[EmpleadoPublico]
     acepta_pago_en_linea: bool = False
+    cancelacion_horas: Optional[int] = None
+    terminos_reembolso: Optional[str] = None
+    timezone: str = "America/Mexico_City"
 
 
 class SlotsResponse(BaseModel):
@@ -1699,7 +1889,7 @@ class ReservaRequest(BaseModel):
     hora_inicio: str  # ISO 8601: "2025-07-15T10:00:00"
     cliente_nombre: str
     cliente_telefono: str
-    cliente_email: Optional[str] = None
+    cliente_email: str
     metodo_pago: Optional[str] = "en_fisico"  # "en_linea" | "en_fisico"
     success_url: Optional[str] = None
     cancel_url: Optional[str] = None
@@ -1799,6 +1989,9 @@ async def get_negocio_publico(slug: str, db: Session = Depends(get_db)):
         ],
         empleados=[EmpleadoPublico(id=str(e.id), nombre=e.nombre) for e in empleados],
         acepta_pago_en_linea=bool(negocio.stripe_charges_enabled),
+        cancelacion_horas=negocio.cancelacion_horas,
+        terminos_reembolso=negocio.terminos_reembolso,
+        timezone=negocio.timezone or "America/Mexico_City",
     )
 
 
@@ -2127,6 +2320,79 @@ async def reservar_cita_publica(
         mensaje="Cita agendada exitosamente",
         checkout_url=checkout_url,
     )
+
+
+# ---------------------------------------------------------------------------
+# Payment link para cita existente
+# ---------------------------------------------------------------------------
+
+@app.post("/api/negocio/{negocio_id}/citas/{cita_id}/payment-link")
+async def cita_payment_link(negocio_id: str, cita_id: str, db: Session = Depends(get_db)):
+    """Genera (o reutiliza) un Stripe Checkout Session para cobrar una cita."""
+    nid = _parse_uuid(negocio_id, "ID de negocio")
+    xid = _parse_uuid(cita_id, "ID de cita")
+
+    negocio = db.query(Negocio).filter(Negocio.id == nid).first()
+    if not negocio:
+        raise HTTPException(status_code=404, detail="Negocio no encontrado.")
+
+    cita = db.query(Cita).filter(Cita.id == xid, Cita.negocio_id == nid).first()
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada.")
+
+    if cita.pagado:
+        raise HTTPException(status_code=400, detail="La cita ya fue pagada.")
+
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Stripe no configurado.")
+
+    # Reutilizar sesión existente si aún está activa
+    if cita.stripe_session_id:
+        try:
+            session = stripe.checkout.Session.retrieve(cita.stripe_session_id)
+            if session.status == "open":
+                return {"url": session.url}
+        except Exception:
+            pass  # Sesión expirada, crear una nueva
+
+    servicio = db.query(Servicio).filter(Servicio.id == cita.servicio_id).first()
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado.")
+
+    cliente = db.query(Cliente).filter(Cliente.id == cita.cliente_id).first()
+
+    try:
+        session_params: dict = dict(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "mxn",
+                    "product_data": {"name": servicio.nombre},
+                    "unit_amount": int(servicio.precio * 100),
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=f"{FRONTEND_URL}/dashboard?pago=exitoso&cita_id={cita_id}",
+            cancel_url=f"{FRONTEND_URL}/dashboard?pago=cancelado&cita_id={cita_id}",
+            metadata={"cita_id": str(cita.id)},
+            customer_email=cliente.email if cliente and cliente.email else None,
+        )
+        if negocio.stripe_connect_id:
+            pi_data: dict = {"transfer_data": {"destination": negocio.stripe_connect_id}}
+            if STRIPE_PLATFORM_FEE_PCT > 0:
+                pi_data["application_fee_amount"] = int(
+                    servicio.precio * 100 * STRIPE_PLATFORM_FEE_PCT / 100
+                )
+            session_params["payment_intent_data"] = pi_data
+
+        session = stripe.checkout.Session.create(**session_params)
+        cita.stripe_session_id = session.id
+        cita.metodo_pago = "en_linea"
+        db.commit()
+        return {"url": session.url}
+    except stripe.error.StripeError as e:  # type: ignore
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

@@ -34,13 +34,13 @@ function validate(
 
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm animate-pulse">
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm animate-pulse">
       <div className="flex items-start justify-between mb-3">
-        <div className="h-4 bg-gray-100 rounded w-1/2" />
-        <div className="h-6 bg-gray-100 rounded-lg w-16" />
+        <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
+        <div className="h-6 bg-gray-100 dark:bg-gray-800 rounded-lg w-16" />
       </div>
-      <div className="h-3 bg-gray-100 rounded w-1/3 mb-4" />
-      <div className="h-3 bg-gray-100 rounded w-3/4" />
+      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/3 mb-4" />
+      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-3/4" />
     </div>
   );
 }
@@ -68,9 +68,9 @@ function ServicioModal({
 }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-md">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 bg-green-100 rounded-xl flex items-center justify-center">
               <svg
@@ -87,13 +87,13 @@ function ServicioModal({
                 />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
               {editando ? "Editar Servicio" : "Nuevo Servicio"}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+            className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <svg
               className="w-4 h-4"
@@ -121,7 +121,7 @@ function ServicioModal({
 
           {/* Nombre */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
               Nombre del servicio <span className="text-red-500">*</span>
             </label>
             <input
@@ -129,8 +129,8 @@ function ServicioModal({
               value={form.nombre}
               onChange={(e) => setForm({ ...form, nombre: e.target.value })}
               placeholder="Ej. Corte Clásico"
-              className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
-                errors.nombre ? "border-red-300 bg-red-50" : "border-gray-200"
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
+                errors.nombre ? "border-red-300 bg-red-50 dark:bg-red-950/20" : "border-gray-200 dark:border-gray-700"
               }`}
             />
             {errors.nombre && (
@@ -141,7 +141,7 @@ function ServicioModal({
           {/* Precio y Duración */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                 Precio ($) <span className="text-red-500">*</span>
               </label>
               <input
@@ -151,8 +151,8 @@ function ServicioModal({
                 value={form.precio}
                 onChange={(e) => setForm({ ...form, precio: e.target.value })}
                 placeholder="150.00"
-                className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
-                  errors.precio ? "border-red-300 bg-red-50" : "border-gray-200"
+                className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
+                  errors.precio ? "border-red-300 bg-red-50 dark:bg-red-950/20" : "border-gray-200 dark:border-gray-700"
                 }`}
               />
               {errors.precio && (
@@ -160,7 +160,7 @@ function ServicioModal({
               )}
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                 Duración (min) <span className="text-red-500">*</span>
               </label>
               <input
@@ -172,10 +172,10 @@ function ServicioModal({
                   setForm({ ...form, duracion_minutos: e.target.value })
                 }
                 placeholder="45"
-                className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
+                className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
                   errors.duracion_minutos
-                    ? "border-red-300 bg-red-50"
-                    : "border-gray-200"
+                    ? "border-red-300 bg-red-50 dark:bg-red-950/20"
+                    : "border-gray-200 dark:border-gray-700"
                 }`}
               />
               {errors.duracion_minutos && (
@@ -188,9 +188,9 @@ function ServicioModal({
 
           {/* Descripción */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
               Descripción{" "}
-              <span className="font-normal text-gray-400">(Opcional)</span>
+              <span className="font-normal text-gray-400 dark:text-gray-500">(Opcional)</span>
             </label>
             <textarea
               value={form.descripcion}
@@ -199,7 +199,7 @@ function ServicioModal({
               }
               rows={3}
               placeholder="Breve descripción del servicio para tus clientes..."
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
             />
           </div>
         </div>
@@ -208,7 +208,7 @@ function ServicioModal({
         <div className="flex gap-3 p-6 pt-0">
           <button
             onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors text-sm"
+            className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm"
           >
             Cancelar
           </button>
@@ -364,13 +364,13 @@ export default function ServiciosView({
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
         <div className="max-w-3xl mx-auto p-6 lg:p-8 pb-20">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Servicios</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Servicios</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                 {isSpinning
                   ? "Cargando..."
                   : `${servicios.length} servicio${servicios.length !== 1 ? "s" : ""} registrado${servicios.length !== 1 ? "s" : ""}`}
@@ -446,7 +446,7 @@ export default function ServiciosView({
             </div>
           )}
 
-          {/* Loading skeletons — only while genuinely loading */}
+          {/* Loading skeletons */}
           {isSpinning && (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -457,7 +457,7 @@ export default function ServiciosView({
 
           {/* Empty state */}
           {!isSpinning && !error && !backendError && servicios.length === 0 && (
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-12 text-center">
               <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-5">
                 <svg
                   className="w-8 h-8 text-green-500"
@@ -473,10 +473,10 @@ export default function ServiciosView({
                   />
                 </svg>
               </div>
-              <h2 className="text-lg font-bold text-gray-900 mb-2">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
                 Aún no tienes servicios
               </h2>
-              <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto leading-relaxed">
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 max-w-xs mx-auto leading-relaxed">
                 Agrega los servicios que ofreces para que tus clientes puedan
                 reservar en línea.
               </p>
@@ -508,12 +508,12 @@ export default function ServiciosView({
               {servicios.map((srv) => (
                 <div
                   key={srv.id}
-                  className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow group"
+                  className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow group"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h3 className="font-bold text-gray-900 text-base">
+                        <h3 className="font-bold text-gray-900 dark:text-gray-100 text-base">
                           {srv.nombre}
                         </h3>
                         <span className="text-xs font-bold bg-green-100 text-green-700 px-2.5 py-1 rounded-full border border-green-200">
@@ -521,7 +521,7 @@ export default function ServiciosView({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mb-2">
                         <svg
                           className="w-3.5 h-3.5"
                           fill="none"
@@ -539,7 +539,7 @@ export default function ServiciosView({
                       </div>
 
                       {srv.descripcion && (
-                        <p className="text-sm text-gray-500 leading-relaxed">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
                           {srv.descripcion}
                         </p>
                       )}
@@ -549,7 +549,7 @@ export default function ServiciosView({
                     <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => openEditar(srv)}
-                        className="h-8 w-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-green-100 hover:text-green-700 transition-colors"
+                        className="h-8 w-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-green-100 hover:text-green-700 transition-colors"
                         title="Editar"
                       >
                         <svg
@@ -568,7 +568,7 @@ export default function ServiciosView({
                       </button>
                       <button
                         onClick={() => handleEliminar(srv)}
-                        className="h-8 w-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                        className="h-8 w-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-red-100 hover:text-red-600 transition-colors"
                         title="Eliminar"
                       >
                         <svg

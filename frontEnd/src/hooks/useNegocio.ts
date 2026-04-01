@@ -21,6 +21,9 @@ export interface NegocioData {
   banco: string | null;
   titular_cuenta: string | null;
   stripe_connect_id: string | null;
+  cancelacion_horas: number | null;
+  terminos_reembolso: string | null;
+  timezone: string;
 }
 
 export interface ServicioData {
@@ -55,6 +58,8 @@ export type RegistrationStatus =
 interface UseNegocioReturn {
   status: RegistrationStatus;
   negocioId: string | null;
+  tieneSuscripcion: boolean;
+  negocioActivo: boolean;
   isLoadingNegocioId: boolean;
   dashboardData: DashboardData | null;
   isLoadingDashboard: boolean;
@@ -65,7 +70,7 @@ interface UseNegocioReturn {
     fields: Partial<
       Pick<
         NegocioData,
-        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
+        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta" | "cancelacion_horas" | "terminos_reembolso" | "timezone"
       >
     >,
   ) => Promise<boolean>;
@@ -83,6 +88,8 @@ export function useNegocio(): UseNegocioReturn {
 
   const [status, setStatus] = useState<RegistrationStatus>("loading");
   const [negocioId, setNegocioId] = useState<string | null>(null);
+  const [tieneSuscripcion, setTieneSuscripcion] = useState(true);
+  const [negocioActivo, setNegocioActivo] = useState(true);
   const [isLoadingNegocioId, setIsLoadingNegocioId] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
     null,
@@ -119,6 +126,8 @@ export function useNegocio(): UseNegocioReturn {
           if (res.ok) {
             const data = await res.json();
             setNegocioId(data.negocio_id);
+            setTieneSuscripcion(data.tiene_suscripcion ?? true);
+            setNegocioActivo(data.negocio_activo ?? true);
             setStatus("registered");
             setBackendError(false);
             setIsLoadingNegocioId(false);
@@ -219,7 +228,7 @@ export function useNegocio(): UseNegocioReturn {
       fields: Partial<
         Pick<
           NegocioData,
-          "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
+          "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta" | "cancelacion_horas" | "terminos_reembolso" | "timezone"
         >
       >,
     ): Promise<boolean> => {
@@ -249,6 +258,8 @@ export function useNegocio(): UseNegocioReturn {
   return {
     status,
     negocioId,
+    tieneSuscripcion,
+    negocioActivo,
     isLoadingNegocioId,
     dashboardData,
     isLoadingDashboard,

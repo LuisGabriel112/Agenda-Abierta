@@ -71,6 +71,22 @@ export default function AdminPanel() {
     }
   };
 
+  const cancelarSuscripcion = async (id: string, nombre: string) => {
+    if (!confirm(`¿Cancelar la suscripción de "${nombre}"? Esta acción no se puede deshacer.`)) return;
+    const res = await fetch(`${API_BASE}/api/admin/negocio/${id}/cancel-subscription`, {
+      method: "POST",
+      headers,
+    });
+    if (res.ok) {
+      setNegocios((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, con_suscripcion: false } : n))
+      );
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail ?? "Error al cancelar la suscripción.");
+    }
+  };
+
   const filtered = negocios.filter(
     (n) =>
       n.nombre.toLowerCase().includes(search.toLowerCase()) ||
@@ -169,7 +185,17 @@ export default function AdminPanel() {
                     <td className="px-4 py-4 text-gray-600">{n.giro ?? "—"}</td>
                     <td className="px-4 py-4 text-center font-medium">{n.total_citas}</td>
                     <td className="px-4 py-4 text-center">
-                      <Badge active={n.con_suscripcion} label={n.con_suscripcion ? "Activa" : "Sin plan"} />
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge active={n.con_suscripcion} label={n.con_suscripcion ? "Activa" : "Sin plan"} />
+                        {n.con_suscripcion && (
+                          <button
+                            onClick={() => cancelarSuscripcion(n.id, n.nombre)}
+                            className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 font-medium transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-center">
                       <Badge active={n.stripe_charges_enabled} label={n.stripe_charges_enabled ? "Listo" : "No"} />

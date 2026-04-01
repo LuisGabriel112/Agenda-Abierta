@@ -65,16 +65,16 @@ export default function DashboardHome({
   // Loading skeleton
   if (isLoading) {
     return (
-      <div className="flex-1 p-6 lg:p-8 flex flex-col lg:flex-row gap-8 overflow-y-auto">
-        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center justify-center p-8 min-h-[500px]">
-          <div className="w-28 h-28 bg-gray-100 rounded-full animate-pulse mb-8" />
-          <div className="w-72 h-8 bg-gray-100 rounded-xl animate-pulse mb-4" />
-          <div className="w-56 h-4 bg-gray-100 rounded-xl animate-pulse mb-10" />
-          <div className="w-48 h-12 bg-gray-100 rounded-xl animate-pulse" />
+      <div className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col lg:flex-row gap-6 lg:gap-8 overflow-y-auto">
+        <div className="flex-1 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col items-center justify-center p-8 min-h-[500px]">
+          <div className="w-28 h-28 bg-gray-100 dark:bg-gray-800 rounded-full animate-pulse mb-8" />
+          <div className="w-72 h-8 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse mb-4" />
+          <div className="w-56 h-4 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse mb-10" />
+          <div className="w-48 h-12 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
         </div>
         <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0">
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 h-64 animate-pulse" />
-          <div className="bg-gray-100 rounded-3xl h-44 animate-pulse" />
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 h-64 animate-pulse" />
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-3xl h-44 animate-pulse" />
         </div>
       </div>
     );
@@ -93,7 +93,6 @@ export default function DashboardHome({
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // fallback for browsers without clipboard API
       const el = document.createElement("textarea");
       el.value = publicUrl;
       document.body.appendChild(el);
@@ -166,9 +165,9 @@ export default function DashboardHome({
 
   return (
     <>
-      <div className="flex-1 p-6 lg:p-8 flex flex-col lg:flex-row gap-8 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col lg:flex-row gap-6 lg:gap-8 overflow-y-auto">
         {/* Panel Central */}
-        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center justify-center p-8 text-center min-h-[500px]">
+        <div className="flex-1 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col items-center justify-center p-8 text-center min-h-[500px]">
           {/* Stats rápidas si ya hay actividad */}
           {hasActivity && (
             <div className="flex gap-6 mb-8">
@@ -176,16 +175,16 @@ export default function DashboardHome({
                 <p className="text-3xl font-extrabold text-green-600">
                   {totalCitas}
                 </p>
-                <p className="text-xs text-gray-400 font-medium mt-0.5">
+                <p className="text-xs text-gray-400 dark:text-gray-500 font-medium mt-0.5">
                   Citas totales
                 </p>
               </div>
-              <div className="w-px bg-gray-100" />
+              <div className="w-px bg-gray-100 dark:bg-gray-700" />
               <div className="text-center">
                 <p className="text-3xl font-extrabold text-green-600">
                   {totalClientes}
                 </p>
-                <p className="text-xs text-gray-400 font-medium mt-0.5">
+                <p className="text-xs text-gray-400 dark:text-gray-500 font-medium mt-0.5">
                   Clientes
                 </p>
               </div>
@@ -194,7 +193,7 @@ export default function DashboardHome({
 
           <div className="relative mb-8">
             <div className="absolute inset-0 bg-green-400 rounded-full blur-2xl opacity-20 transform scale-150"></div>
-            <div className="relative h-28 w-28 bg-green-50 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
+            <div className="relative h-28 w-28 bg-green-50 rounded-full flex items-center justify-center border-4 border-white dark:border-gray-900 shadow-sm">
               <svg
                 className="w-12 h-12 text-green-600"
                 fill="none"
@@ -216,12 +215,12 @@ export default function DashboardHome({
             </div>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4 max-w-md leading-tight tracking-tight">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-gray-900 dark:text-gray-100 mb-4 max-w-md leading-tight tracking-tight">
             {negocioNombre
               ? `${negocioNombre} está listo para recibir clientes`
               : "Tu agenda está lista para recibir clientes"}
           </h2>
-          <p className="text-gray-500 mb-10 max-w-md leading-relaxed">
+          <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-md leading-relaxed">
             {hasActivity
               ? "Tu negocio está activo. Sigue gestionando tus citas y clientes desde el panel."
               : "¡Todo está configurado! Comienza a organizar tu tiempo y haz crecer tu negocio hoy mismo creando tu primera cita manual o compartiendo tu link."}
@@ -247,7 +246,7 @@ export default function DashboardHome({
             {hasActivity ? "Nueva cita" : "Crear mi primera cita"}
           </button>
 
-          <div className="mt-12 flex flex-wrap justify-center gap-6 text-sm font-medium text-gray-400">
+          <div className="mt-12 flex flex-wrap justify-center gap-6 text-sm font-medium text-gray-400 dark:text-gray-500">
             {[
               "Horarios definidos",
               "Servicios activos",
@@ -278,18 +277,18 @@ export default function DashboardHome({
         {/* Columna Derecha */}
         <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0">
           {/* Tutorial Rápido */}
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-gray-900 text-lg">
+              <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg">
                 Tutorial Rápido
               </h3>
-              <span className="text-xs text-gray-400 font-medium">
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">
                 {[serviciosOk, horariosOk, enlaceOk].filter(Boolean).length}/3
               </span>
             </div>
 
             {/* Progress bar */}
-            <div className="w-full bg-gray-100 rounded-full h-1.5 mb-6">
+            <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 mb-6">
               <div
                 className="bg-green-600 h-1.5 rounded-full transition-all duration-500"
                 style={{
@@ -299,7 +298,7 @@ export default function DashboardHome({
             </div>
 
             <div className="relative">
-              <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-gray-100"></div>
+              <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-gray-100 dark:bg-gray-800"></div>
               <div className="space-y-4 relative">
                 {tutorialSteps.map((step) => (
                   <div key={step.key} className="flex gap-4 relative group">
@@ -309,8 +308,8 @@ export default function DashboardHome({
                         step.done
                           ? "bg-green-600 text-white shadow-sm shadow-green-600/20"
                           : step.disabled
-                            ? "bg-gray-100 text-gray-300 border border-gray-200"
-                            : "bg-gray-100 text-gray-400 border border-gray-200"
+                            ? "bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 border border-gray-200 dark:border-gray-700"
+                            : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700"
                       }`}
                     >
                       {step.done ? (
@@ -348,8 +347,8 @@ export default function DashboardHome({
                             step.done
                               ? "text-green-700"
                               : step.disabled
-                                ? "text-gray-400"
-                                : "text-gray-900"
+                                ? "text-gray-400 dark:text-gray-600"
+                                : "text-gray-900 dark:text-gray-100"
                           }`}
                         >
                           {step.title}
@@ -360,8 +359,8 @@ export default function DashboardHome({
                           step.done
                             ? "text-green-600"
                             : step.disabled
-                              ? "text-gray-300"
-                              : "text-gray-500"
+                              ? "text-gray-300 dark:text-gray-600"
+                              : "text-gray-500 dark:text-gray-400"
                         }`}
                       >
                         {step.desc}
@@ -373,7 +372,7 @@ export default function DashboardHome({
                         disabled={step.disabled && !step.done}
                         className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
                           step.disabled && !step.done
-                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                            ? "bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed"
                             : step.done && step.key === "enlace" && copied
                               ? "bg-green-600 text-white"
                               : step.done
@@ -424,7 +423,7 @@ export default function DashboardHome({
 
                       {/* Public URL preview for enlace step */}
                       {step.key === "enlace" && enlaceOk && publicUrl && (
-                        <p className="mt-1.5 text-[10px] text-gray-400 font-mono truncate max-w-[180px]">
+                        <p className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-[180px]">
                           {publicUrl}
                         </p>
                       )}
@@ -491,9 +490,9 @@ export default function DashboardHome({
       {/* Modal Nueva Cita */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-lg">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 bg-green-100 rounded-xl flex items-center justify-center">
                   <svg
@@ -510,11 +509,11 @@ export default function DashboardHome({
                     />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Nueva Cita</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Nueva Cita</h2>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+                className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
               >
                 <svg
                   className="w-4 h-4"
@@ -536,7 +535,7 @@ export default function DashboardHome({
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                     Nombre del cliente
                   </label>
                   <input
@@ -544,11 +543,11 @@ export default function DashboardHome({
                     value={form.cliente}
                     onChange={handleChange}
                     placeholder="Ej. María García"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                     Teléfono
                   </label>
                   <input
@@ -556,20 +555,20 @@ export default function DashboardHome({
                     value={form.telefono}
                     onChange={handleChange}
                     placeholder="+52 55 0000 0000"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                   Servicio
                 </label>
                 <select
                   name="servicio"
                   value={form.servicio}
                   onChange={handleChange}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
                   <option value="">Selecciona un servicio</option>
                   <option>Consulta General</option>
@@ -581,7 +580,7 @@ export default function DashboardHome({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                     Fecha
                   </label>
                   <input
@@ -589,11 +588,11 @@ export default function DashboardHome({
                     name="fecha"
                     value={form.fecha}
                     onChange={handleChange}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                     Hora
                   </label>
                   <input
@@ -601,15 +600,15 @@ export default function DashboardHome({
                     name="hora"
                     value={form.hora}
                     onChange={handleChange}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                   Notas{" "}
-                  <span className="font-normal text-gray-400">(Opcional)</span>
+                  <span className="font-normal text-gray-400 dark:text-gray-500">(Opcional)</span>
                 </label>
                 <textarea
                   name="notas"
@@ -617,7 +616,7 @@ export default function DashboardHome({
                   onChange={handleChange}
                   rows={3}
                   placeholder="Ej. Cliente prefiere lado izquierdo, alérgico a..."
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
                 />
               </div>
             </div>
@@ -626,7 +625,7 @@ export default function DashboardHome({
             <div className="flex gap-3 p-6 pt-0">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors text-sm"
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm"
               >
                 Cancelar
               </button>

@@ -95,6 +95,7 @@ export default function ConfiguracionView({
   const [telefonoNegocio, setTelefonoNegocio] = useState("");
   const [cancelacion, setCancelacion] = useState("24 horas antes");
   const [terminosReembolso, setTerminosReembolso] = useState("");
+  const [timezone, setTimezone] = useState("America/Mexico_City");
   // Pagos
   const [clabe, setClabe] = useState("");
   const [banco, setBanco] = useState("");
@@ -106,6 +107,7 @@ export default function ConfiguracionView({
   const [stripeConectado, setStripeConectado] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [copiedIcal, setCopiedIcal] = useState(false);
 
   // Logo upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +139,11 @@ export default function ConfiguracionView({
       setClabe(negocio.clabe ?? "");
       setBanco(negocio.banco ?? "");
       setTitularCuenta(negocio.titular_cuenta ?? "");
+      if (negocio.cancelacion_horas != null) {
+        setCancelacion(`${negocio.cancelacion_horas} ${negocio.cancelacion_horas === 1 ? "hora" : "horas"} antes`);
+      }
+      setTerminosReembolso(negocio.terminos_reembolso ?? "");
+      setTimezone(negocio.timezone ?? "America/Mexico_City");
       const raw = negocio.url_logo ?? null;
       setLogoUrl(raw ? (raw.startsWith("http") ? raw : `${import.meta.env.VITE_API_BASE}${raw}`) : null);
     }
@@ -212,6 +219,7 @@ export default function ConfiguracionView({
 
   const handleGuardar = async () => {
     setSaveError("");
+    const cancelacionHoras = parseInt(cancelacion.split(" ")[0], 10) || 24;
     const ok = await onSave({
       nombre: nombreNegocio,
       descripcion: biografia,
@@ -222,6 +230,9 @@ export default function ConfiguracionView({
       telefono_negocio: telefonoNegocio || undefined,
       notif_email: emailNotif,
       notif_whatsapp: whatsappNotif,
+      cancelacion_horas: cancelacionHoras,
+      terminos_reembolso: terminosReembolso || undefined,
+      timezone,
     });
     if (ok) {
       setSaved(true);
@@ -548,6 +559,126 @@ export default function ConfiguracionView({
 
           <p className="text-[11px] text-gray-400 mt-3">Guarda los cambios para ver los colores actualizados en tu página pública.</p>
         </div>
+
+        {/* Zona Horaria */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="h-8 w-8 bg-blue-100 rounded-xl flex items-center justify-center">
+              <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-gray-900">Zona Horaria</h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            Define la zona horaria de tu negocio. Los horarios de atención y disponibilidad se interpretan en esta zona.
+          </p>
+          <select
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <optgroup label="México">
+              <option value="America/Mexico_City">Ciudad de México, Guadalajara, Monterrey (UTC−6/−5)</option>
+              <option value="America/Cancun">Cancún, Quintana Roo (UTC−5, sin horario de verano)</option>
+              <option value="America/Chihuahua">Chihuahua, Ciudad Juárez (UTC−7/−6)</option>
+              <option value="America/Tijuana">Tijuana, Baja California (UTC−8/−7)</option>
+            </optgroup>
+            <optgroup label="Centroamérica y el Caribe">
+              <option value="America/Guatemala">Guatemala, El Salvador, Honduras (UTC−6)</option>
+              <option value="America/Costa_Rica">Costa Rica (UTC−6)</option>
+              <option value="America/Bogota">Colombia (UTC−5)</option>
+              <option value="America/Lima">Perú (UTC−5)</option>
+              <option value="America/Caracas">Venezuela (UTC−4)</option>
+            </optgroup>
+            <optgroup label="Sudamérica">
+              <option value="America/Santiago">Chile (UTC−4/−3)</option>
+              <option value="America/Argentina/Buenos_Aires">Argentina (UTC−3)</option>
+              <option value="America/Sao_Paulo">Brasil — São Paulo (UTC−3/−2)</option>
+            </optgroup>
+            <optgroup label="Estados Unidos y Canadá">
+              <option value="America/New_York">Este — Nueva York (UTC−5/−4)</option>
+              <option value="America/Chicago">Centro — Chicago (UTC−6/−5)</option>
+              <option value="America/Denver">Montaña — Denver (UTC−7/−6)</option>
+              <option value="America/Los_Angeles">Pacífico — Los Ángeles (UTC−8/−7)</option>
+            </optgroup>
+            <optgroup label="Europa">
+              <option value="Europe/Madrid">España (UTC+1/+2)</option>
+              <option value="Europe/London">Reino Unido (UTC+0/+1)</option>
+            </optgroup>
+            <option value="UTC">UTC (sin ajuste)</option>
+          </select>
+        </div>
+
+        {/* Integraciones — Google Calendar */}
+        {negocioId && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-8 w-8 bg-red-50 rounded-xl flex items-center justify-center">
+                <svg className="w-4 h-4 text-red-500" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.5 3h-2V1.5A.5.5 0 0017 1h-1a.5.5 0 00-.5.5V3h-7V1.5A.5.5 0 008 1H7a.5.5 0 00-.5.5V3h-2A2.5 2.5 0 002 5.5v15A2.5 2.5 0 004.5 23h15a2.5 2.5 0 002.5-2.5v-15A2.5 2.5 0 0019.5 3zm-15 2h2v.5a.5.5 0 00.5.5h1a.5.5 0 00.5-.5V5h7v.5a.5.5 0 00.5.5h1a.5.5 0 00.5-.5V5h2a.5.5 0 01.5.5V8H4V5.5A.5.5 0 014.5 5zM4 21V10h16v11H4z"/>
+                </svg>
+              </div>
+              <h2 className="text-base font-bold text-gray-900">Integraciones</h2>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+              Suscríbete a tu calendario de citas desde Google Calendar, Apple Calendar u Outlook. Se actualiza automáticamente con cada nueva reservación.
+            </p>
+
+            {/* iCal URL */}
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-gray-700 mb-2">URL de suscripción iCal</p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={`${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/calendar.ics`}
+                  className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-600 focus:outline-none select-all"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/calendar.ics`
+                    );
+                    setCopiedIcal(true);
+                    setTimeout(() => setCopiedIcal(false), 2000);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white text-xs font-semibold rounded-xl hover:bg-gray-700 transition-colors shrink-0"
+                >
+                  {copiedIcal ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copiado
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copiar
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Instrucciones */}
+            <details className="group">
+              <summary className="text-xs text-green-600 font-semibold cursor-pointer hover:underline select-none">
+                ¿Cómo agregar en Google Calendar?
+              </summary>
+              <ol className="mt-2 text-xs text-gray-500 space-y-1 list-decimal list-inside leading-relaxed">
+                <li>Copia la URL de arriba</li>
+                <li>En Google Calendar, ve a <strong className="text-gray-700">Otros calendarios → +</strong></li>
+                <li>Selecciona <strong className="text-gray-700">"Desde URL"</strong></li>
+                <li>Pega la URL y haz clic en <strong className="text-gray-700">"Agregar calendario"</strong></li>
+              </ol>
+            </details>
+          </div>
+        )}
 
         {/* Horarios de Atención */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -1010,7 +1141,7 @@ export default function ConfiguracionView({
       )}
 
       {/* Botón flotante Guardar Cambios */}
-      <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+      <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 flex items-center gap-3">
         {saved && (
           <span className="flex items-center gap-1.5 bg-white border border-green-200 text-green-600 text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

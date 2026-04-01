@@ -4,6 +4,7 @@ import {
   CitaItem,
   ServicioData,
   ClienteListItem,
+  EmpleadoData,
 } from "../../hooks/useApi";
 import { useNegocio } from "../../hooks/useNegocio";
 
@@ -36,6 +37,12 @@ const MOTIVOS = [
 ];
 
 type Vista = "hoy" | "semana" | "mes";
+
+/** Extrae HH:MM directamente del string ISO — sin depender del timezone del browser */
+function isoToHora(iso: string): string {
+  const match = iso.match(/T(\d{2}:\d{2})/);
+  return match ? match[1] : "";
+}
 
 function startOfDay(d: Date): Date {
   const r = new Date(d);
@@ -115,6 +122,7 @@ function estadoBadgeClass(estado: string): string {
 interface NuevaCitaModalProps {
   clientes: ClienteListItem[];
   servicios: ServicioData[];
+  empleados: EmpleadoData[];
   fechaPreseleccionada: string;
   horaPreseleccionada: string;
   saving: boolean;
@@ -124,12 +132,14 @@ interface NuevaCitaModalProps {
     clienteId: string,
     servicioId: string,
     horaInicio: string,
+    empleadoId: string,
   ) => void;
 }
 
 function NuevaCitaModal({
   clientes,
   servicios,
+  empleados,
   fechaPreseleccionada,
   horaPreseleccionada,
   saving,
@@ -139,6 +149,7 @@ function NuevaCitaModal({
 }: NuevaCitaModalProps) {
   const [clienteId, setClienteId] = useState("");
   const [servicioId, setServicioId] = useState("");
+  const [empleadoId, setEmpleadoId] = useState(() => empleados[0]?.id ?? "");
   const [fecha, setFecha] = useState(fechaPreseleccionada);
   const [hora, setHora] = useState(horaPreseleccionada);
   const [localError, setLocalError] = useState("");
@@ -166,7 +177,7 @@ function NuevaCitaModal({
     d.setHours(h, m, 0, 0);
     const pad = (n: number) => String(n).padStart(2, "0");
     const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(h)}:${pad(m)}:00`;
-    onGuardar(clienteId, servicioId, iso);
+    onGuardar(clienteId, servicioId, iso, empleadoId);
   };
 
   const errMsg = localError || error;
@@ -267,6 +278,25 @@ function NuevaCitaModal({
               </select>
             )}
           </div>
+
+          {empleados.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Especialista
+              </label>
+              <select
+                value={empleadoId}
+                onChange={(e) => setEmpleadoId(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                {empleados.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -433,22 +463,198 @@ function BloqueoModal({ diaLabel, horaLabel, onClose }: BloqueoModalProps) {
 }
 
 // ─── Detalle Cita Modal ────────────────────────────────────────────────────────
+// ─── Reprogramar Modal ────────────────────────────────────────────────────────
+interface ReprogramarModalProps {
+  cita: CitaItem;
+  onClose: () => void;
+  onConfirm: (citaId: string, horaInicio: string, horaFin: string) => Promise<void>;
+}
+
+function buildSlots(): string[] {
+  const slots: string[] = [];
+  for (let h = 7; h <= 21; h++) {
+    slots.push(`${String(h).padStart(2, "0")}:00`);
+    if (h < 21) slots.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return slots;
+}
+
+function addMinutes(dateIso: string, minutes: number): string {
+  const d = new Date(dateIso);
+  d.setMinutes(d.getMinutes() + minutes);
+  return d.toISOString();
+}
+
+function ReprogramarModal({ cita, onClose, onConfirm }: ReprogramarModalProps) {
+  const today = new Date().toISOString().slice(0, 10);
+  const citaDate = new Date(cita.hora_inicio);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const citaDateStr = `${citaDate.getFullYear()}-${pad(citaDate.getMonth() + 1)}-${pad(citaDate.getDate())}`;
+  const citaTimeStr = `${pad(citaDate.getHours())}:${pad(citaDate.getMinutes())}`;
+
+  const [fecha, setFecha] = useState(citaDateStr);
+  const [hora, setHora] = useState(citaTimeStr);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const duracion = cita.servicio_duracion_minutos || 60;
+  const slots = buildSlots();
+
+  const horaFinPreview = (() => {
+    try {
+      const inicio = new Date(`${fecha}T${hora}:00`);
+      const fin = new Date(inicio.getTime() + duracion * 60000);
+      return `${pad(fin.getHours())}:${pad(fin.getMinutes())}`;
+    } catch {
+      return "—";
+    }
+  })();
+
+  const handleConfirm = async () => {
+    setError("");
+    try {
+      const horaInicio = new Date(`${fecha}T${hora}:00`).toISOString();
+      const horaFin = addMinutes(horaInicio, duracion);
+      setSaving(true);
+      await onConfirm(cita.id, horaInicio, horaFin);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al reprogramar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 bg-blue-100 rounded-xl flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">Reprogramar Cita</h2>
+          </div>
+          <button onClick={onClose} className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="bg-gray-50 rounded-2xl p-4 text-xs space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Cliente</span>
+              <span className="font-semibold text-gray-800">{cita.cliente_nombre}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Servicio</span>
+              <span className="font-semibold text-gray-800">{cita.servicio_nombre}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Duración</span>
+              <span className="text-gray-700">{duracion} min</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Nueva fecha</label>
+            <input
+              type="date"
+              value={fecha}
+              min={today}
+              onChange={(e) => setFecha(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Nueva hora de inicio</label>
+            <select
+              value={hora}
+              onChange={(e) => setHora(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {slots.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-2.5 text-sm">
+            <span className="text-blue-600 font-medium">Hora de fin estimada</span>
+            <span className="font-bold text-blue-800">{horaFinPreview}</span>
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-3 p-6 pt-0">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 text-sm">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || !fecha || !hora}
+            className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Guardando...</>
+            ) : "Confirmar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DetalleCitaModalProps {
   cita: CitaItem;
+  negocioId: string | null;
   onClose: () => void;
   onUpdateEstado: (citaId: string, estado: string) => void;
   onDelete: (citaId: string) => void;
+  onReschedule: (cita: CitaItem) => void;
   updating: boolean;
 }
 
 function DetalleCitaModal({
   cita,
+  negocioId,
   onClose,
   onUpdateEstado,
   onDelete,
+  onReschedule,
   updating,
 }: DetalleCitaModalProps) {
   const ESTADOS = ["PENDIENTE", "CONFIRMADA", "COMPLETADA", "CANCELADA"];
+  const [generandoLink, setGenerandoLink] = useState(false);
+  const [linkError, setLinkError] = useState("");
+
+  const handleCobrarEnLinea = async () => {
+    if (!negocioId) return;
+    setGenerandoLink(true);
+    setLinkError("");
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE}/api/negocio/${negocioId}/citas/${cita.id}/payment-link`,
+        { method: "POST", headers: { "Content-Type": "application/json" } },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setLinkError(err.detail ?? "Error al generar el link");
+        return;
+      }
+      const data = await res.json();
+      window.open(data.url, "_blank");
+    } catch {
+      setLinkError("No se pudo conectar con el servidor");
+    } finally {
+      setGenerandoLink(false);
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
@@ -502,10 +708,7 @@ function DetalleCitaModal({
                 Hora inicio
               </span>
               <span className="text-xs text-gray-700">
-                {new Date(cita.hora_inicio).toLocaleTimeString("es-MX", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {isoToHora(cita.hora_inicio)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -513,10 +716,7 @@ function DetalleCitaModal({
                 Hora fin
               </span>
               <span className="text-xs text-gray-700">
-                {new Date(cita.hora_fin).toLocaleTimeString("es-MX", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {isoToHora(cita.hora_fin)}
               </span>
             </div>
             <div className="flex justify-between items-center pt-1">
@@ -557,21 +757,46 @@ function DetalleCitaModal({
             </div>
           </div>
         </div>
-        <div className="flex gap-3 p-6 pt-0">
-          <button
-            onClick={() => {
-              if (confirm("¿Eliminar esta cita?")) onDelete(cita.id);
-            }}
-            className="flex-1 border border-red-200 text-red-600 font-semibold py-3 rounded-xl hover:bg-red-50 text-sm"
-          >
-            Eliminar
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 text-sm"
-          >
-            Cerrar
-          </button>
+        {linkError && (
+          <p className="px-6 pb-2 text-xs text-red-500">{linkError}</p>
+        )}
+        <div className="flex flex-col gap-2 p-6 pt-0">
+          {!cita.pagado && (
+            <button
+              onClick={handleCobrarEnLinea}
+              disabled={generandoLink}
+              className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 text-sm disabled:opacity-50"
+            >
+              {generandoLink ? "Generando link…" : "Cobrar en línea"}
+            </button>
+          )}
+          {cita.estado !== "CANCELADA" && cita.estado !== "COMPLETADA" && (
+            <button
+              onClick={() => onReschedule(cita)}
+              className="w-full border border-blue-200 text-blue-700 font-semibold py-3 rounded-xl hover:bg-blue-50 text-sm flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Reprogramar
+            </button>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                if (confirm("¿Eliminar esta cita?")) onDelete(cita.id);
+              }}
+              className="flex-1 border border-red-200 text-red-600 font-semibold py-3 rounded-xl hover:bg-red-50 text-sm"
+            >
+              Eliminar
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 text-sm"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -579,9 +804,9 @@ function DetalleCitaModal({
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export default function CalendarioView() {
+export default function CalendarioView({ onCitaCreada, citaAAbrir }: { onCitaCreada?: () => void; citaAAbrir?: CitaItem | null }) {
   const { negocioId } = useNegocio();
-  const { getCitas, getClientes, getServicios, createCita, updateCita, deleteCita } = useApi(negocioId);
+  const { getCitas, getClientes, getServicios, getEmpleados, createCita, updateCita, deleteCita } = useApi(negocioId);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -593,6 +818,7 @@ export default function CalendarioView() {
   const [citas, setCitas] = useState<CitaItem[]>([]);
   const [clientes, setClientes] = useState<ClienteListItem[]>([]);
   const [servicios, setServicios] = useState<ServicioData[]>([]);
+  const [empleados, setEmpleados] = useState<EmpleadoData[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modals
@@ -600,18 +826,33 @@ export default function CalendarioView() {
   const [showBloqueo, setShowBloqueo] = useState(false);
   const [citaSeleccionada, setCitaSeleccionada] = useState<CitaItem | null>(null);
 
+  // Abrir cita desde notificación
+  useEffect(() => {
+    if (!citaAAbrir) return;
+    const fecha = startOfDay(new Date(citaAAbrir.hora_inicio));
+    setVista("hoy");
+    setRefDate(fecha);
+    // Pequeño delay para que el calendario renderice el día antes de abrir el modal
+    setTimeout(() => setCitaSeleccionada(citaAAbrir), 100);
+  }, [citaAAbrir]);
+
   // Nueva cita state
   const [nuevaCitaFecha, setNuevaCitaFecha] = useState("");
   const [nuevaCitaHora, setNuevaCitaHora] = useState("");
   const [savingCita, setSavingCita] = useState(false);
   const [savingError, setSavingError] = useState("");
   const [paginaProximas, setPaginaProximas] = useState(0);
+  const [filtroEstado, setFiltroEstado] = useState<string>("TODOS");
+  const [filtroEmpleado, setFiltroEmpleado] = useState<string>("TODOS");
 
   // Bloqueo state
   const [bloqueoLabel, setBloqueoLabel] = useState({ dia: "", hora: "" });
 
   // Updating cita state
   const [updatingCita, setUpdatingCita] = useState(false);
+
+  // Reprogramar state
+  const [citaAReprogramar, setCitaAReprogramar] = useState<CitaItem | null>(null);
 
   // ── fetch ─────────────────────────────────────────────────────────────────
 
@@ -624,14 +865,16 @@ export default function CalendarioView() {
         `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const first = viewDates[0];
       const last = viewDates[viewDates.length - 1];
-      const [c, cl, sv] = await Promise.all([
+      const [c, cl, sv, emp] = await Promise.all([
         getCitas({ fecha_inicio: fmt(first), fecha_fin: fmt(last) + "T23:59:59" }),
         getClientes(),
         getServicios(),
+        getEmpleados(),
       ]);
       setCitas(c);
       setClientes(cl);
       setServicios(sv);
+      setEmpleados(emp.filter((e) => e.activo));
     } catch (e) {
       console.error(e);
     } finally {
@@ -665,13 +908,14 @@ export default function CalendarioView() {
     setShowBloqueo(true);
   };
 
-  const handleGuardarCita = async (clienteId: string, servicioId: string, horaInicio: string) => {
+  const handleGuardarCita = async (clienteId: string, servicioId: string, horaInicio: string, empleadoId: string) => {
     setSavingCita(true);
     setSavingError("");
     try {
-      const nueva = await createCita({ cliente_id: clienteId, servicio_id: servicioId, hora_inicio: horaInicio });
+      const nueva = await createCita({ cliente_id: clienteId, servicio_id: servicioId, hora_inicio: horaInicio, empleado_id: empleadoId || undefined });
       setCitas((prev) => [...prev, nueva]);
       setShowNuevaCita(false);
+      onCitaCreada?.();
     } catch (e) {
       setSavingError(e instanceof Error ? e.message : "Error al guardar");
     } finally {
@@ -702,43 +946,45 @@ export default function CalendarioView() {
     }
   };
 
+  const handleReschedule = async (citaId: string, horaInicio: string, horaFin: string) => {
+    const updated = await updateCita(citaId, { hora_inicio: horaInicio, hora_fin: horaFin });
+    setCitas((prev) => prev.map((c) => (c.id === citaId ? updated : c)));
+    setCitaSeleccionada(updated);
+    setCitaAReprogramar(null);
+  };
+
   // ── helpers ───────────────────────────────────────────────────────────────
 
   const citasEnSlot = (date: Date, hora: string): CitaItem[] => {
     const h = parseInt(hora.split(":")[0]);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     return citas.filter((c) => {
-      const ci = new Date(c.hora_inicio);
-      return (
-        ci.getFullYear() === date.getFullYear() &&
-        ci.getMonth() === date.getMonth() &&
-        ci.getDate() === date.getDate() &&
-        ci.getHours() === h
-      );
+      const m = c.hora_inicio.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):/);
+      return m ? m[1] === dateStr && parseInt(m[2]) === h : false;
     });
   };
 
-  const citasEnDia = (date: Date): CitaItem[] =>
-    citas.filter((c) => {
-      const ci = new Date(c.hora_inicio);
-      return (
-        ci.getFullYear() === date.getFullYear() &&
-        ci.getMonth() === date.getMonth() &&
-        ci.getDate() === date.getDate()
-      );
-    });
+  const citasEnDia = (date: Date): CitaItem[] => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    return citas.filter((c) => c.hora_inicio.startsWith(dateStr));
+  };
 
   const citasDuracion = (cita: CitaItem): number =>
     Math.max((cita.servicio_duracion_minutos || 60) / 60, 0.5);
 
   const proximas = [...citas]
     .filter((c) => c.estado !== "CANCELADA")
+    .filter((c) => filtroEstado === "TODOS" || c.estado === filtroEstado)
+    .filter((c) => filtroEmpleado === "TODOS" || c.empleado_id === filtroEmpleado)
     .sort((a, b) => new Date(a.hora_inicio).getTime() - new Date(b.hora_inicio).getTime());
 
   const citasHoy = citasEnDia(today);
 
   // ── grid columns for hoy/semana ───────────────────────────────────────────
   const gridDates = vista === "mes" ? [] : viewDates;
-  const cols = gridDates.length + 1; // +1 for time column
+  void (gridDates.length + 1); // time column count, unused
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -746,11 +992,11 @@ export default function CalendarioView() {
     <>
       <div className="flex flex-1 overflow-hidden">
         {/* Main */}
-        <div className="flex-1 p-5 overflow-y-auto">
+        <div className="flex-1 p-3 md:p-5 overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
             <div>
-              <h1 className="text-xl font-bold text-gray-900 capitalize">
+              <h1 className="text-base md:text-xl font-bold text-gray-900 capitalize">
                 {formatRangeLabel(vista, viewDates)}
               </h1>
             </div>
@@ -812,7 +1058,7 @@ export default function CalendarioView() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                Nueva Cita
+                <span className="hidden sm:inline">Nueva Cita</span>
               </button>
             </div>
           </div>
@@ -823,8 +1069,8 @@ export default function CalendarioView() {
               {/* Day labels */}
               <div className="grid grid-cols-7 border-b border-gray-100">
                 {DAYS.map((d) => (
-                  <div key={d} className="p-3 text-center text-xs font-bold text-gray-400 uppercase">
-                    {d}
+                  <div key={d} className="p-1 md:p-3 text-center text-[10px] md:text-xs font-bold text-gray-400 uppercase">
+                    {d.slice(0, 2)}
                   </div>
                 ))}
               </div>
@@ -855,7 +1101,7 @@ export default function CalendarioView() {
                         <div
                           key={i}
                           onClick={() => { setVista("hoy"); setRefDate(startOfDay(d)); }}
-                          className={`min-h-[80px] p-2 border-b border-r border-gray-50 cursor-pointer transition-colors ${
+                          className={`min-h-[60px] md:min-h-[80px] p-1 md:p-2 border-b border-r border-gray-50 cursor-pointer transition-colors ${
                             inMonth ? "hover:bg-green-50/40" : "bg-gray-50/60"
                           }`}
                         >
@@ -877,7 +1123,7 @@ export default function CalendarioView() {
                                 onClick={(e) => { e.stopPropagation(); setCitaSeleccionada(c); }}
                                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded truncate cursor-pointer ${colorForCita(c.id)}`}
                               >
-                                {new Date(c.hora_inicio).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} {c.cliente_nombre}
+                                {isoToHora(c.hora_inicio)} {c.cliente_nombre}
                               </div>
                             ))}
                             {dayCitas.length > 3 && (
@@ -977,9 +1223,34 @@ export default function CalendarioView() {
         <div className="w-72 border-l border-gray-100 bg-white p-5 overflow-y-auto shrink-0 flex-col gap-5 hidden lg:flex">
           {/* Próximas Citas */}
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900">Próximas Citas</h3>
               <span className="text-xs text-gray-400">{proximas.length} pendientes</span>
+            </div>
+            {/* Filtros */}
+            <div className="flex flex-col gap-1.5 mb-3">
+              <select
+                value={filtroEstado}
+                onChange={(e) => { setFiltroEstado(e.target.value); setPaginaProximas(0); }}
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
+              >
+                <option value="TODOS">Todos los estados</option>
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="CONFIRMADA">Confirmada</option>
+                <option value="COMPLETADA">Completada</option>
+              </select>
+              {empleados.length > 0 && (
+                <select
+                  value={filtroEmpleado}
+                  onChange={(e) => { setFiltroEmpleado(e.target.value); setPaginaProximas(0); }}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
+                >
+                  <option value="TODOS">Todos los empleados</option>
+                  {empleados.map((emp) => (
+                    <option key={emp.id} value={String(emp.id)}>{emp.nombre}</option>
+                  ))}
+                </select>
+              )}
             </div>
             {proximas.length === 0 ? (
               <div className="text-center py-8">
@@ -1008,7 +1279,7 @@ export default function CalendarioView() {
                           <p className="text-sm font-bold text-gray-900 truncate">{cita.cliente_nombre}</p>
                           <p className="text-xs text-gray-500 truncate">
                             {cita.servicio_nombre} •{" "}
-                            {new Date(cita.hora_inicio).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                            {isoToHora(cita.hora_inicio)}
                           </p>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${estadoBadgeClass(cita.estado)}`}>
@@ -1082,6 +1353,7 @@ export default function CalendarioView() {
         <NuevaCitaModal
           clientes={clientes}
           servicios={servicios}
+          empleados={empleados}
           fechaPreseleccionada={nuevaCitaFecha}
           horaPreseleccionada={nuevaCitaHora}
           saving={savingCita}
@@ -1099,13 +1371,23 @@ export default function CalendarioView() {
         />
       )}
 
-      {citaSeleccionada && (
+      {citaSeleccionada && !citaAReprogramar && (
         <DetalleCitaModal
           cita={citaSeleccionada}
+          negocioId={negocioId}
           onClose={() => setCitaSeleccionada(null)}
           onUpdateEstado={handleUpdateEstado}
           onDelete={handleDeleteCita}
+          onReschedule={(cita) => setCitaAReprogramar(cita)}
           updating={updatingCita}
+        />
+      )}
+
+      {citaAReprogramar && (
+        <ReprogramarModal
+          cita={citaAReprogramar}
+          onClose={() => setCitaAReprogramar(null)}
+          onConfirm={handleReschedule}
         />
       )}
     </>

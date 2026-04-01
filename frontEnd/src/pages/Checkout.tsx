@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useUser } from "@clerk/react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -18,6 +19,9 @@ function CheckoutContent() {
   const location = useLocation();
   const stripe = useStripe();
   const elements = useElements();
+  const { user } = useUser();
+
+  const reactivarMode = !!(location.state as { reactivar?: boolean } | null)?.reactivar;
 
   // Datos recibidos desde Onboarding
   const { businessName, selectedType, services, schedule } =
@@ -110,21 +114,34 @@ function CheckoutContent() {
         return;
       }
 
-      // 4. Pago exitoso → ir al registro con los IDs de Stripe
-      navigate("/register", {
-        state: {
-          plan: selectedPlan,
-          isAnnual,
-          total: total.toFixed(2),
-          paymentMethodId: paymentMethod.id,
-          stripeCustomerId: data.customer_id,
-          stripeSubscriptionId: data.subscription_id,
-          businessName,
-          selectedType,
-          services,
-          schedule,
-        },
-      });
+      // 4. Pago exitoso
+      if (reactivarMode && user) {
+        await fetch(`${import.meta.env.VITE_API_BASE}/api/reactivar-suscripcion`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clerk_user_id: user.id,
+            stripe_subscription_id: data.subscription_id,
+            stripe_customer_id: data.customer_id,
+          }),
+        });
+        navigate("/dashboard");
+      } else {
+        navigate("/register", {
+          state: {
+            plan: selectedPlan,
+            isAnnual,
+            total: total.toFixed(2),
+            paymentMethodId: paymentMethod.id,
+            stripeCustomerId: data.customer_id,
+            stripeSubscriptionId: data.subscription_id,
+            businessName,
+            selectedType,
+            services,
+            schedule,
+          },
+        });
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Error desconocido.");
       setIsProcessing(false);

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
     --color-brand-50: #ecfdf5;
@@ -25,5 +26,9 @@
         font-family: var(--font-sans);
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+    }
+    .dark body {
+        background-color: #0f172a;
+        color: #f1f5f9;
     }
 }

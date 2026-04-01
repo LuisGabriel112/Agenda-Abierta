@@ -47,6 +47,7 @@ export interface CitaItem {
   servicio_id: string;
   servicio_nombre: string;
   servicio_duracion_minutos: number;
+  empleado_id: string | null;
   empleado_nombre: string;
   hora_inicio: string;
   hora_fin: string;
@@ -62,6 +63,7 @@ export interface EmpleadoData {
   email: string;
   rol: "ADMIN" | "STAFF";
   activo: boolean;
+  servicios: string[];
 }
 
 export interface AnaliticaData {
@@ -226,6 +228,7 @@ export function useApi(negocioId: string | null) {
       cliente_id: string;
       servicio_id: string;
       hora_inicio: string;
+      empleado_id?: string;
       notas?: string;
     }): Promise<CitaItem> => {
       if (!negocioId) return Promise.reject(new Error("Sin negocio"));
@@ -316,6 +319,17 @@ export function useApi(negocioId: string | null) {
     [negocioId],
   );
 
+  const updateServiciosEmpleado = useCallback(
+    (empleadoId: string, serviciosIds: string[]): Promise<EmpleadoData> => {
+      if (!negocioId) return Promise.reject(new Error("Sin negocio"));
+      return req(`/api/negocio/${negocioId}/empleados/${empleadoId}/servicios`, {
+        method: "PUT",
+        body: JSON.stringify({ servicios_ids: serviciosIds }),
+      });
+    },
+    [negocioId],
+  );
+
   // ── Analítica ─────────────────────────────────────────────────────────────
 
   const getAnalitica = useCallback((): Promise<AnaliticaData> => {
@@ -349,6 +363,7 @@ export function useApi(negocioId: string | null) {
     createEmpleado,
     updateEmpleado,
     deleteEmpleado,
+    updateServiciosEmpleado,
     // Analítica
     getAnalitica,
   };

@@ -88,6 +88,11 @@ class Negocio(Base):
     # Stripe Connect Express (para cobros con tarjeta)
     stripe_connect_id: Mapped[Optional[str]] = mapped_column(String(100))
     stripe_charges_enabled: Mapped[bool] = mapped_column(default=False)
+    # Políticas de cancelación
+    cancelacion_horas: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    terminos_reembolso: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    # Zona horaria IANA (ej. "America/Mexico_City")
+    timezone: Mapped[str] = mapped_column(String(60), default="America/Mexico_City", nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

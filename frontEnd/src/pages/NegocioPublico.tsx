@@ -33,6 +33,9 @@ interface NegocioPublico {
   servicios: ServicioPublico[];
   empleados: EmpleadoPublico[];
   acepta_pago_en_linea: boolean;
+  cancelacion_horas: number | null;
+  terminos_reembolso: string | null;
+  timezone: string;
 }
 
 interface ReservaState {
@@ -91,19 +94,21 @@ function formatDate(dateStr: string) {
 }
 
 function buildGCalLink(state: ReservaState, negocioNombre: string) {
+  // Construir fechas como "tiempo flotante" (sin conversión UTC) para que
+  // Google Calendar muestre exactamente la hora del negocio.
+  const pad = (n: number) => String(n).padStart(2, "0");
   const [y, mo, d] = state.fecha.split("-").map(Number);
   const [h, mi] = state.hora.split(":").map(Number);
-  const start = new Date(y, mo - 1, d, h, mi);
-  const end = new Date(start.getTime() + state.servicioDuracion * 60000);
-  const fmt = (dt: Date) =>
-    dt.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-  const title = encodeURIComponent(
-    `${state.servicioNombre} — ${negocioNombre}`,
-  );
+  const endMinutes = h * 60 + mi + state.servicioDuracion;
+  const eH = Math.floor(endMinutes / 60) % 24;
+  const eMi = endMinutes % 60;
+  const fmt = (yr: number, month: number, day: number, hh: number, mm: number) =>
+    `${yr}${pad(month)}${pad(day)}T${pad(hh)}${pad(mm)}00`;
+  const title = encodeURIComponent(`${state.servicioNombre} — ${negocioNombre}`);
   const details = encodeURIComponent(
     `Cita con ${state.empleadoNombre || negocioNombre}`,
   );
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(y, mo, d, h, mi)}/${fmt(y, mo, d, eH, eMi)}&details=${details}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +344,7 @@ export default function NegocioPublicoPage() {
   const [formErrors, setFormErrors] = useState<{
     nombre?: string;
     telefono?: string;
+    email?: string;
   }>({});
 
   // ── Detectar regreso desde Stripe ────────────────────────────────────────
@@ -417,13 +423,17 @@ export default function NegocioPublicoPage() {
 
   // ── Confirm booking ───────────────────────────────────────────────────────
   const handleConfirmar = async () => {
-    const errors: { nombre?: string; telefono?: string } = {};
+    const errors: { nombre?: string; telefono?: string; email?: string } = {};
     if (!reserva.clienteNombre.trim())
       errors.nombre = "El nombre es obligatorio.";
     if (!reserva.clienteTelefono.trim())
       errors.telefono = "El teléfono es obligatorio.";
     else if (reserva.clienteTelefono.replace(/\D/g, "").length < 10)
       errors.telefono = "Ingresa un teléfono válido (mín. 10 dígitos).";
+    if (!reserva.clienteEmail.trim())
+      errors.email = "El email es obligatorio.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reserva.clienteEmail.trim()))
+      errors.email = "Ingresa un email válido.";
 
     if (Object.keys(errors).length) {
       setFormErrors(errors);
@@ -448,7 +458,7 @@ export default function NegocioPublicoPage() {
             hora_inicio: horaInicio,
             cliente_nombre: reserva.clienteNombre.trim(),
             cliente_telefono: reserva.clienteTelefono.trim(),
-            cliente_email: reserva.clienteEmail.trim() || undefined,
+            cliente_email: reserva.clienteEmail.trim(),
             metodo_pago: reserva.metodoPago,
             success_url: `${window.location.origin}${window.location.pathname}`,
             cancel_url: `${window.location.origin}${window.location.pathname}`,
@@ -1142,9 +1152,17 @@ export default function NegocioPublicoPage() {
                   <h2 className="text-xl font-extrabold text-gray-900 mb-1">
                     ¿Cuándo te queda bien?
                   </h2>
-                  <p className="text-sm text-gray-500 mb-5">
+                  <p className="text-sm text-gray-500 mb-3">
                     Elige el día y la hora de tu cita.
                   </p>
+                  {negocio.timezone && negocio.timezone !== "UTC" && (
+                    <div className="flex items-center gap-1.5 mb-4 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Los horarios se muestran en la zona horaria del negocio: <strong>{negocio.timezone.replace("_", " ")}</strong></span>
+                    </div>
+                  )}
 
                   <MiniCalendar
                     selected={reserva.fecha}
@@ -1343,10 +1361,7 @@ export default function NegocioPublicoPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                        Email{" "}
-                        <span className="text-gray-400 font-normal">
-                          (Opcional)
-                        </span>
+                        Email <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="email"
@@ -1358,8 +1373,17 @@ export default function NegocioPublicoPage() {
                           }))
                         }
                         placeholder="tu@correo.com"
-                        className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        className={`w-full border rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all ${
+                          formErrors.email
+                            ? "border-red-300 bg-red-50"
+                            : "border-gray-200"
+                        }`}
                       />
+                      {formErrors.email && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.email}
+                        </p>
+                      )}
                     </div>
 
                     {/* Método de pago */}
@@ -1599,6 +1623,20 @@ export default function NegocioPublicoPage() {
                       ? `Reservar a las ${reserva.hora}`
                       : "Elige un horario"}
                   </button>
+                )}
+                {paso === 4 && negocio.cancelacion_horas != null && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 leading-relaxed">
+                    <span className="font-semibold">Política de cancelación:</span> Puedes cancelar hasta{" "}
+                    <span className="font-semibold">
+                      {negocio.cancelacion_horas === 1
+                        ? "1 hora"
+                        : `${negocio.cancelacion_horas} horas`}
+                    </span>{" "}
+                    antes de tu cita sin penalización.
+                    {negocio.terminos_reembolso && (
+                      <span> {negocio.terminos_reembolso}</span>
+                    )}
+                  </div>
                 )}
                 {paso === 4 && (
                   <button

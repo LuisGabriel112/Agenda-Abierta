@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useAuth, useUser } from "@clerk/react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { useAuth, useUser, useClerk } from "@clerk/react";
 import { useEffect, useState } from "react";
 import Landing from "./pages/Landing";
 import Onboarding from "./pages/Onboarding";
@@ -15,7 +15,7 @@ import AdminPanel from "./pages/AdminPanel";
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 const ADMIN_ID = import.meta.env.VITE_ADMIN_CLERK_USER_ID as string;
 
-type RegStatus = "loading" | "registered" | "not_registered";
+type RegStatus = "loading" | "registered" | "not_registered" | "no_subscription" | "suspended";
 
 function RootRoute() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -39,6 +39,8 @@ function RootRoute() {
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
+  const { signOut } = useClerk();
+  const navigate = useNavigate();
   const [regStatus, setRegStatus] = useState<RegStatus>("loading");
 
   useEffect(() => {
@@ -50,7 +52,14 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
           `${API_BASE}/api/me?clerk_user_id=${encodeURIComponent(user.id)}`,
         );
         if (res.ok) {
-          setRegStatus("registered");
+          const data = await res.json();
+          if (!data.negocio_activo) {
+            setRegStatus("suspended");
+          } else if (!data.tiene_suscripcion) {
+            setRegStatus("no_subscription");
+          } else {
+            setRegStatus("registered");
+          }
         } else if (res.status === 404) {
           setRegStatus("not_registered");
         } else {
@@ -82,6 +91,40 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 
   if (regStatus === "not_registered")
     return <Navigate to="/complete-profile" replace />;
+
+  if (regStatus === "suspended" || regStatus === "no_subscription") {
+    const msg = regStatus === "suspended"
+      ? "Tu cuenta ha sido suspendida. Contacta a soporte para más información."
+      : "Tu suscripción fue cancelada. Para seguir usando AgendaAbierta necesitas reactivar tu plan.";
+    const titulo = regStatus === "suspended" ? "Cuenta suspendida" : "Suscripción cancelada";
+    return (
+      <div className="min-h-screen bg-[#f4f7f6] flex items-center justify-center font-sans">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 max-w-md w-full text-center space-y-4">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+            <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-slate-800">{titulo}</h2>
+          <p className="text-sm text-gray-500">{msg}</p>
+          {regStatus === "no_subscription" && (
+            <button
+              onClick={() => navigate("/checkout", { state: { reactivar: true } })}
+              className="w-full mt-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 transition-colors"
+            >
+              Reactivar plan
+            </button>
+          )}
+          <button
+            onClick={() => signOut({ redirectUrl: "/" })}
+            className="text-sm text-gray-400 hover:text-gray-600 underline"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return children;
 }
