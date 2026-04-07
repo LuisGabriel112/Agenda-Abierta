@@ -29,3 +29,9 @@ dist/
 # Vite
 frontEnd/dist/
 frontEnd/.env.local
+
+# Logs
+*.log
+
+# Claude Code
+.claude/
