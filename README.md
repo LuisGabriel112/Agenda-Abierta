@@ -1,45 +1,120 @@
-# 🗓️ AgendaAbierta SaaS
-> **Tu agenda llena, tus ingresos seguros.**
+# AgendaAbierta
 
-AgendaAbierta es una plataforma **Multi-tenant** de alto rendimiento diseñada para digitalizar la gestión de citas en negocios de bienestar (Barberías, Spas, Clínicas). Enfocada en reducir el "No-Show" mediante pagos de anticipos automatizados y recordatorios inteligentes por WhatsApp.
-
----
-
-## 🚀 Características Principales
-
-- **Multi-tenancy Real:** Aislamiento total de datos por negocio mediante arquitectura de base de datos basada en UUIDs.
-- **Micro-sites Personalizados:** Cada negocio cuenta con su propia URL (`/[slug]`) con identidad visual (colores y logo) adaptable.
-- **Motor de Disponibilidad Inteligente:** Cálculo de slots libres en tiempo real cruzando horarios de staff, duración de servicios y bloqueos manuales.
-- **Gestión de Anticipos:** Integración con Stripe para obligar al pago de una reserva (20-50%) y asegurar la asistencia.
-- **CRM Integrado:** Historial detallado por cliente, métricas de retención y analítica de ingresos.
-
-## 🛠️ Stack Tecnológico
-
-**Frontend:**
-- **React 19** (Vite) + **TypeScript**.
-- **Tailwind CSS** para un diseño Neo-minimalista.
-- **React Query** para sincronización de estado asíncrono.
-- **Lucide React** & **Shadcn/UI** para componentes de alta fidelidad.
-
-**Backend:**
-- **FastAPI** (Python 3.12+) con arquitectura asíncrona.
-- **SQLAlchemy 2.0** (Mapeo moderno con `Mapped` y `mapped_column`).
-- **PostgreSQL** como base de datos relacional robusta.
-- **Redis** para el manejo de concurrencia y bloqueos temporales de slots.
+Plataforma SaaS multi-tenant para gestión de citas. Cada negocio obtiene su propio micro-sitio público donde los clientes pueden reservar, pagar anticipos y cancelar citas sin intervención del negocio.
 
 ---
 
-## 📂 Estructura del Proyecto
+## Stack
 
-```text
-├── backend/
-│   ├── app/
-│   │   ├── modelos.py      # Esquemas de SQLAlchemy en español
-│   │   ├── esquemas.py     # Validaciones Pydantic v2
-│   │   ├── api/            # Endpoints REST v1
-│   │   └── core/           # Motor de disponibilidad y lógica de negocio
-├── frontend/
-│   ├── src/
-│   │   ├── components/     # UI Reutilizable (Stitch Design System)
-│   │   ├── hooks/          # Lógica de React personalizada
-│   │   └── pages/          # Vistas (Admin, Booking, Landing)
+**Backend**
+- Python 3.13 + FastAPI
+- SQLAlchemy 2.0 (ORM con `Mapped` / `mapped_column`)
+- PostgreSQL (Supabase)
+- Stripe (suscripciones + pagos de anticipos + Stripe Connect)
+- Brevo (email + WhatsApp)
+- APScheduler (recordatorios automáticos)
+- Clerk (autenticación)
+
+**Frontend**
+- React 18 + TypeScript + Vite
+- Tailwind CSS 4
+- Clerk React
+- React Router DOM 7
+
+---
+
+## Estructura
+
+```
+├── app/
+│   ├── main.py              # Todos los endpoints REST (FastAPI)
+│   ├── modelos.py           # Modelos SQLAlchemy
+│   ├── database.py          # Conexión a la base de datos
+│   └── notificaciones.py    # Emails y WhatsApp via Brevo
+├── frontEnd/
+│   └── src/
+│       ├── pages/           # Landing, Dashboard, NegocioPublico, CancelarCita, etc.
+│       ├── components/      # Componentes reutilizables del dashboard
+│       └── App.tsx          # Rutas
+├── migrations/              # Scripts de migración de base de datos
+├── Dockerfile
+└── render.yaml
+```
+
+---
+
+## Variables de entorno
+
+### Backend (`.env`)
+
+```env
+DATABASE_URL=postgresql://...
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PLATFORM_FEE_PCT=0
+BREVO_API_KEY=xkeysib-...
+BREVO_SENDER_EMAIL=noreply@tudominio.com
+BREVO_SENDER_NAME=AgendaAbierta
+CORS_ORIGINS=https://tu-frontend.vercel.app
+FRONTEND_URL=https://tu-frontend.vercel.app
+ADMIN_CLERK_USER_ID=user_...
+SUPABASE_URL=https://....supabase.co
+SUPABASE_SERVICE_KEY=eyJ...
+```
+
+### Frontend (`frontEnd/.env.local`)
+
+```env
+VITE_API_BASE=http://localhost:8000
+VITE_CLERK_PUBLISHABLE_KEY=pk_...
+VITE_ADMIN_CLERK_USER_ID=user_...
+```
+
+---
+
+## Desarrollo local
+
+```bash
+# Backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# Frontend
+cd frontEnd
+npm install
+npm run dev
+```
+
+---
+
+## Migraciones
+
+Los scripts en `migrations/` agregan columnas a la base de datos existente. Ejecutar una sola vez por entorno:
+
+```bash
+python migrations/migrate_cancel_token.py
+```
+
+---
+
+## Deploy
+
+- **Backend:** Render (`render.yaml` incluido). Conectar repo y configurar variables de entorno en el dashboard.
+- **Frontend:** Vercel. Root directory: `frontEnd`. Agregar las tres variables `VITE_*` en el dashboard.
+- **Base de datos:** PostgreSQL en Supabase (ya incluido en `DATABASE_URL`).
+
+---
+
+## Funcionalidades
+
+- Registro de negocios con onboarding guiado
+- Micro-sitio público por negocio (`/b/:slug`) para reservas
+- Cancelación de citas por el cliente via link en email (`/cancelar/:token`)
+- Motor de disponibilidad en tiempo real (horarios + bloqueos + citas existentes)
+- Pagos de anticipos con Stripe Checkout
+- Stripe Connect Express para cobros en cuenta del negocio
+- Recordatorios automáticos por email 24h antes de la cita
+- Notificaciones por email al cliente y al negocio
+- Dashboard con calendario, clientes, servicios, empleados y analítica
+- Exportación CSV de citas y clientes
+- Panel de administrador global
