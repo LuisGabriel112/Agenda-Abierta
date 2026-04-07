@@ -43,35 +43,6 @@ Plataforma SaaS multi-tenant para gestión de citas. Cada negocio obtiene su pro
 
 ---
 
-## Variables de entorno
-
-### Backend (`.env`)
-
-```env
-DATABASE_URL=postgresql://...
-STRIPE_SECRET_KEY=sk_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PLATFORM_FEE_PCT=0
-BREVO_API_KEY=xkeysib-...
-BREVO_SENDER_EMAIL=noreply@tudominio.com
-BREVO_SENDER_NAME=AgendaAbierta
-CORS_ORIGINS=https://tu-frontend.vercel.app
-FRONTEND_URL=https://tu-frontend.vercel.app
-ADMIN_CLERK_USER_ID=user_...
-SUPABASE_URL=https://....supabase.co
-SUPABASE_SERVICE_KEY=eyJ...
-```
-
-### Frontend (`frontEnd/.env.local`)
-
-```env
-VITE_API_BASE=http://localhost:8000
-VITE_CLERK_PUBLISHABLE_KEY=pk_...
-VITE_ADMIN_CLERK_USER_ID=user_...
-```
-
----
-
 ## Desarrollo local
 
 ```bash
