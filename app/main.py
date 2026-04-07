@@ -3,11 +3,10 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-# ── Cargar .env ANTES de cualquier import que lea variables de entorno ──────
+# ── Cargar .env solo en desarrollo (no pisa variables de entorno del host) ──
 from dotenv import load_dotenv
 _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-load_dotenv(dotenv_path=_env_path, override=True)
-print(f"[env] _env_path={_env_path}, SUPABASE_SERVICE_KEY={'SET' if os.getenv('SUPABASE_SERVICE_KEY') else 'EMPTY'}")
+load_dotenv(dotenv_path=_env_path, override=False)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
