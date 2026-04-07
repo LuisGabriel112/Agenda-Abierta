@@ -43,38 +43,7 @@ Plataforma SaaS multi-tenant para gestión de citas. Cada negocio obtiene su pro
 
 ---
 
-## Desarrollo local
 
-```bash
-# Backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-
-# Frontend
-cd frontEnd
-npm install
-npm run dev
-```
-
----
-
-## Migraciones
-
-Los scripts en `migrations/` agregan columnas a la base de datos existente. Ejecutar una sola vez por entorno:
-
-```bash
-python migrations/migrate_cancel_token.py
-```
-
----
-
-## Deploy
-
-- **Backend:** Render (`render.yaml` incluido). Conectar repo y configurar variables de entorno en el dashboard.
-- **Frontend:** Vercel. Root directory: `frontEnd`. Agregar las tres variables `VITE_*` en el dashboard.
-- **Base de datos:** PostgreSQL en Supabase (ya incluido en `DATABASE_URL`).
-
----
 
 ## Funcionalidades
 
