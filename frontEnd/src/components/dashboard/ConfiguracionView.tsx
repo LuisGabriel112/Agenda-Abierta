@@ -12,7 +12,7 @@ interface ConfiguracionViewProps {
     fields: Partial<
       Pick<
         NegocioData,
-        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta"
+        "nombre" | "giro" | "descripcion" | "direccion" | "color_marca" | "email_negocio" | "telefono_negocio" | "notif_email" | "notif_whatsapp" | "clabe" | "banco" | "titular_cuenta" | "cancelacion_horas" | "terminos_reembolso" | "timezone"
       >
     >,
   ) => Promise<boolean>;
