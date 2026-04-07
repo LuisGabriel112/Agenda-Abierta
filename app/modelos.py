@@ -250,6 +250,9 @@ class Cita(Base):
     pagado: Mapped[bool] = mapped_column(default=False)
     stripe_session_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     recordatorio_enviado: Mapped[bool] = mapped_column(default=False)
+    cancel_token: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), default=uuid.uuid4, unique=True, index=True, nullable=False
+    )
 
     # Relaciones
     negocio: Mapped["Negocio"] = relationship(back_populates="citas")

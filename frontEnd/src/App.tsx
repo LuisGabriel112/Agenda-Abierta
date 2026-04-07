@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import CompleteProfile from "./pages/CompleteProfile";
 import NegocioPublico from "./pages/NegocioPublico";
 import AdminPanel from "./pages/AdminPanel";
+import CancelarCita from "./pages/CancelarCita";
 
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 const ADMIN_ID = import.meta.env.VITE_ADMIN_CLERK_USER_ID as string;
@@ -141,6 +142,7 @@ function App() {
         <Route path="/payment-failed" element={<PaymentFailed />} />
         <Route path="/complete-profile" element={<CompleteProfile />} />
         <Route path="/b/:slug" element={<NegocioPublico />} />
+        <Route path="/cancelar/:token" element={<CancelarCita />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route
           path="/dashboard"

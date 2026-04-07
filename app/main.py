@@ -2294,6 +2294,10 @@ async def reservar_cita_publica(
                 detail=f"Cita guardada pero no se pudo crear el pago: {str(e)}",
             )
 
+    # Construir link de cancelación para el cliente
+    _frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4000")
+    _cancel_url = f"{_frontend_url}/cancelar/{nueva_cita.cancel_token}"
+
     # Enviar notificaciones en background (no bloquea la respuesta)
     _notif_executor.submit(
         notificar_reserva,
@@ -2312,6 +2316,7 @@ async def reservar_cita_publica(
         servicio_nombre=servicio.nombre,
         empleado_nombre=empleado.nombre if empleado else "—",
         hora_inicio=hora_inicio,
+        cancel_url=_cancel_url,
     )
 
     return ReservaResponse(
@@ -2595,3 +2600,107 @@ async def update_horarios(
         }
         for h in nuevos
     ]
+
+
+# ---------------------------------------------------------------------------
+# Cancelación pública de cita por token
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/public/cita/{cancel_token}")
+async def get_cita_por_token(cancel_token: str, db: Session = Depends(get_db)):
+    """Devuelve info de la cita para que el cliente confirme antes de cancelar."""
+    try:
+        token_uuid = uuid.UUID(cancel_token)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Token inválido.")
+
+    cita = (
+        db.query(Cita)
+        .filter(Cita.cancel_token == token_uuid)
+        .first()
+    )
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada.")
+
+    return {
+        "cita_id": str(cita.id),
+        "estado": cita.estado,
+        "hora_inicio": cita.hora_inicio.isoformat(),
+        "hora_fin": cita.hora_fin.isoformat(),
+        "servicio": cita.servicio.nombre,
+        "empleado": cita.empleado.nombre,
+        "negocio": cita.negocio.nombre,
+        "negocio_slug": cita.negocio.slug,
+        "cliente": cita.cliente.nombre,
+        "cancelacion_horas": cita.negocio.cancelacion_horas,
+        "terminos_reembolso": cita.negocio.terminos_reembolso,
+    }
+
+
+@app.post("/api/public/cita/{cancel_token}/cancelar")
+async def cancelar_cita_por_token(cancel_token: str, db: Session = Depends(get_db)):
+    """Permite al cliente cancelar su cita usando el token enviado por email."""
+    from datetime import timezone as _tz
+
+    try:
+        token_uuid = uuid.UUID(cancel_token)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Token inválido.")
+
+    cita = (
+        db.query(Cita)
+        .filter(Cita.cancel_token == token_uuid)
+        .first()
+    )
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita no encontrada.")
+
+    if cita.estado == EstadoCita.CANCELADA:
+        raise HTTPException(status_code=400, detail="La cita ya fue cancelada.")
+
+    if cita.estado == EstadoCita.COMPLETADA:
+        raise HTTPException(status_code=400, detail="No se puede cancelar una cita completada.")
+
+    # Validar política de cancelación
+    negocio = cita.negocio
+    if negocio.cancelacion_horas is not None:
+        hora_inicio = cita.hora_inicio
+        if hora_inicio.tzinfo is None:
+            ahora = datetime.now()
+        else:
+            ahora = datetime.now(_tz.utc)
+        horas_restantes = (hora_inicio - ahora).total_seconds() / 3600
+        if horas_restantes < negocio.cancelacion_horas:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No es posible cancelar con menos de {negocio.cancelacion_horas} horas de anticipación.",
+            )
+
+    cita.estado = EstadoCita.CANCELADA
+    db.commit()
+
+    # Notificar al negocio por email
+    if negocio.notif_email and negocio.email_negocio:
+        from .notificaciones import enviar_email, _format_fecha
+        _notif_executor.submit(
+            enviar_email,
+            to_email=negocio.email_negocio,
+            to_name=negocio.nombre,
+            subject=f"Cita cancelada: {cita.cliente.nombre} — {cita.servicio.nombre}",
+            html=f"""
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
+              <h2 style="color:#dc2626;margin-bottom:4px">Cita cancelada por el cliente</h2>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin:16px 0">
+                <p style="margin:6px 0"><b>Cliente:</b> {cita.cliente.nombre}</p>
+                <p style="margin:6px 0"><b>Teléfono:</b> {cita.cliente.telefono}</p>
+                <p style="margin:6px 0"><b>Servicio:</b> {cita.servicio.nombre}</p>
+                <p style="margin:6px 0"><b>Fecha:</b> {_format_fecha(cita.hora_inicio)}</p>
+                <p style="margin:6px 0"><b>Especialista:</b> {cita.empleado.nombre}</p>
+              </div>
+              <p style="color:#9ca3af;font-size:12px;text-align:center">AgendaAbierta</p>
+            </div>
+            """,
+        )
+
+    return {"success": True, "mensaje": "Cita cancelada exitosamente."}

@@ -90,6 +90,7 @@ def _html_confirmacion_cliente(
     clabe: str | None = None,
     banco: str | None = None,
     titular_cuenta: str | None = None,
+    cancel_url: str | None = None,
 ) -> str:
     fecha_str = _format_fecha(hora_inicio)
     direccion_html = f"<p style='margin:6px 0'><b>Dirección:</b> {negocio_direccion}</p>" if negocio_direccion else ""
@@ -103,6 +104,14 @@ def _html_confirmacion_cliente(
         <p style="margin:6px 0"><b>CLABE:</b> <span style="font-family:monospace;letter-spacing:1px">{clabe}</span>{banco_str}</p>
         {titular_str}
       </div>"""
+    cancel_html = ""
+    if cancel_url:
+        cancel_html = f"""
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px;margin:16px 0;text-align:center">
+        <p style="margin:0 0 10px 0;font-size:13px;color:#92400e">¿Necesitas cancelar tu cita?</p>
+        <a href="{cancel_url}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:bold">Cancelar cita</a>
+        <p style="margin:10px 0 0 0;font-size:11px;color:#b45309">Este enlace es de un solo uso y solo puede ser usado por ti.</p>
+      </div>"""
     return f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:12px">
       <h2 style="color:#16a34a;margin-bottom:4px">Cita confirmada</h2>
@@ -115,6 +124,7 @@ def _html_confirmacion_cliente(
         {direccion_html}
       </div>
       {clabe_html}
+      {cancel_html}
       <p style="color:#9ca3af;font-size:12px;text-align:center">AgendaAbierta — gestión de citas para tu negocio</p>
     </div>
     """
@@ -221,6 +231,7 @@ def notificar_reserva(
     servicio_nombre: str,
     empleado_nombre: str,
     hora_inicio: datetime,
+    cancel_url: str | None = None,
     whatsapp_template_cliente: int = 0,
     whatsapp_template_negocio: int = 0,
 ) -> None:
@@ -246,6 +257,7 @@ def notificar_reserva(
                 clabe=negocio_clabe,
                 banco=negocio_banco,
                 titular_cuenta=negocio_titular,
+                cancel_url=cancel_url,
             ),
         )
 
