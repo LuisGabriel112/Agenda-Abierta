@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { ClerkProvider } from "@clerk/react";
 import { esES } from "@clerk/localizations";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import App from "./App.tsx";
 import "./index.css";
 import "tailwindcss";
@@ -21,6 +23,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       localization={esES}
     >
       <App />
+      <Analytics />
+      <SpeedInsights />
     </ClerkProvider>
   </React.StrictMode>,
 );
