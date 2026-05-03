@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi, ServicioData } from "../../hooks/useApi";
 import { useNegocio } from "../../hooks/useNegocio";
 
+const API_BASE = import.meta.env.VITE_API_BASE as string;
+
 interface ServicioForm {
   nombre: string;
   precio: string;
@@ -418,9 +420,9 @@ export default function ServiciosView({
                   No se pudo conectar al servidor
                 </p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  Verifica que el backend esté corriendo en{" "}
+                  No se pudo alcanzar el servidor en{" "}
                   <code className="font-mono bg-amber-100 px-1 rounded">
-                    localhost:8000
+                    {API_BASE}
                   </code>
                 </p>
               </div>
